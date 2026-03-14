@@ -1,0 +1,34 @@
+.otpRow {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.otpBox {
+  width: 48px;
+  height: 56px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background-color: #f9fafb;
+  font-size: 1.5rem;
+  font-weight: 600;
+  text-align: center;
+  color: #111827;
+  caret-color: transparent;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  /* hide number spinner */
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.otpBox::-webkit-inner-spin-button,
+.otpBox::-webkit-outer-spin-button {
+  appearance: none;
+}
+
+.otpBox:focus {
+  outline: none;
+  border-color: #185FA5;
+  box-shadow: 0 0 0 3px rgba(24, 95, 165, 0.12);
+  background-color: #ffffff;
+}
