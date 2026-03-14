@@ -1,299 +1,386 @@
-import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useProfile } from '../context/ProfileContext';
 import { supabase } from '../lib/supabaseClient';
-
-/* ── Types ─────────────────────────────────────── */
-type TipoPerfil = 'personal' | 'docente' | 'alumno';
-
-interface Perfil {
-  id: string;
-  tipo: TipoPerfil;
-}
+import { useNavigate } from 'react-router-dom';
 
 /* ── Icons ─────────────────────────────────────── */
-function PersonalIcon({ size = 20 }: { size?: number }) {
+function IconInicio({ isActive }: { isActive?: boolean }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#185FA5" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-      <circle cx="12" cy="7" r="4"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#185FA5" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
     </svg>
   );
 }
 
-function DocenteIcon({ size = 20 }: { size?: number }) {
+function IconAnalisis() {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#3B6D11" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
-      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   );
 }
 
-function AlumnoIcon({ size = 20 }: { size?: number }) {
+function IconSalas() {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="#534AB7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
-      <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
     </svg>
   );
 }
 
-const PROFILE_CONFIG: Record<TipoPerfil, { label: string; bg: string; Icon: React.FC<{ size?: number }> }> = {
-  personal: { label: 'Personal', bg: '#eff6ff', Icon: PersonalIcon },
-  docente:  { label: 'Docente',  bg: '#f2fbf0', Icon: DocenteIcon },
-  alumno:   { label: 'Alumno',   bg: '#f5f3ff', Icon: AlumnoIcon },
-};
+function IconUnirse() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+      <polyline points="10 17 15 12 10 7" />
+      <line x1="15" y1="12" x2="3" y2="12" />
+    </svg>
+  );
+}
+
+function IconPlus() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+function IconLogout() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
+
+/* ── Sidebar Item Component ────────────────────── */
+interface SidebarItemProps {
+  icon: React.ReactNode;
+  label: string;
+  active?: boolean;
+}
+
+function SidebarItem({ icon, label, active, onClick }: SidebarItemProps & { onClick?: () => void }) {
+  return (
+    <div 
+      onClick={onClick}
+      style={{
+        display: 'flex',
+      alignItems: 'center',
+      gap: '12px',
+      padding: '8px 12px',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontWeight: 500,
+      cursor: 'pointer',
+      backgroundColor: active ? '#E6F1FB' : 'transparent',
+      color: active ? '#185FA5' : '#64748b',
+      transition: 'all 0.2s',
+      marginBottom: '2px'
+    }}
+    onMouseEnter={e => {
+      if (!active) {
+        e.currentTarget.style.backgroundColor = '#f3f4f6';
+        e.currentTarget.style.color = '#1e293b';
+      }
+    }}
+    onMouseLeave={e => {
+      if (!active) {
+        e.currentTarget.style.backgroundColor = 'transparent';
+        e.currentTarget.style.color = '#64748b';
+      }
+    }}>
+      {icon}
+      <span>{label}</span>
+    </div>
+  );
+}
+
+/* ── Main content components ───────────────────── */
+function QuickActionCard({ icon, title, description, isDashed, onClick }: any) {
+  return (
+    <div 
+      onClick={onClick}
+      style={{
+        backgroundColor: '#ffffff',
+        borderRadius: '12px',
+        border: isDashed ? '1.5px dashed #e5e7eb' : '1px solid #e5e7eb',
+        padding: '1.25rem',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem',
+        cursor: 'pointer',
+        transition: 'all 0.2s'
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.borderColor = '#185FA5';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = isDashed ? '#e5e7eb' : '#e5e7eb';
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'none';
+      }}
+    >
+      <div style={{
+        width: '40px',
+        height: '40px',
+        borderRadius: '10px',
+        backgroundColor: isDashed ? '#f8fafc' : '#E6F1FB',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#185FA5'
+      }}>
+        {icon}
+      </div>
+      <div>
+        <h4 style={{ margin: '0 0 2px 0', fontSize: '15px', fontWeight: 600, color: '#1e293b' }}>{title}</h4>
+        <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>{description}</p>
+      </div>
+    </div>
+  );
+}
 
 /* ── Dashboard Component ────────────────────────── */
 export default function Dashboard() {
   const { user, signOut } = useAuth();
-  const { activeProfile, setActiveProfile, clearProfile } = useProfile();
   const navigate = useNavigate();
+  const [nombre, setNombre] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
-  const [otrosPerfiles, setOtrosPerfiles] = useState<Perfil[]>([]);
-  const [showDropdown, setShowDropdown]   = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  /* ── 1. Click Outside Listener for Dropdown ─── */
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowDropdown(false);
+    async function getPersona() {
+      if (!user) return;
+      try {
+        const { data } = await supabase
+          .from('personas')
+          .select('nombre')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (data) setNombre(data.nombre);
+      } catch (err) {
+        console.error('Error fetching persona:', err);
+      } finally {
+        setLoading(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+    getPersona();
+  }, [user]);
 
-  /* ── 3. Load Other Profiles ─────────────────── */
   useEffect(() => {
-    const loadPerfiles = async () => {
-      if (!user || !activeProfile) return;
-      const { data } = await supabase
-        .from('perfiles')
-        .select('id, tipo')
-        .eq('persona_id', user.id);
-        
-      if (data) {
-        // Only show profiles that aren't the currently active one
-        setOtrosPerfiles(data.filter(p => p.id !== activeProfile.id) as Perfil[]);
-      }
-    };
-    loadPerfiles();
-  }, [user, activeProfile]);
-
-  /* ── Handlers ───────────────────────────────── */
-  const handleSwitchProfile = (perfil: Perfil) => {
-    setActiveProfile({ id: perfil.id, tipo: perfil.tipo });
-    setShowDropdown(false);
-    // Stay on dashboard, logic automatically updates because activeProfile changed
-  };
-
-  const handleGestionarPerfiles = () => {
-    setShowDropdown(false);
-    navigate('/perfiles', { replace: true });
-  };
+    window.history.pushState(null, document.title, window.location.href)
+    const handlePopState = () => {
+      window.history.pushState(null, document.title, window.location.href)
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, []);
 
   const handleLogout = async () => {
     await signOut();
-    clearProfile();
     window.location.replace('/login');
   };
 
-  /* ── Render Check ───────────────────────────── */
-  if (!activeProfile) return null; // Avoid render crash while redirecting
+  if (loading) {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ width: '32px', height: '32px', border: '3px solid #e5e7eb', borderTopColor: '#185FA5', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
 
-  const config = PROFILE_CONFIG[activeProfile.tipo];
-  const ActiveIcon = config.Icon;
+  const initials = nombre ? nombre.charAt(0).toUpperCase() : '?';
 
   return (
-    <div style={{ padding: '0', fontFamily: 'system-ui, -apple-system, sans-serif', backgroundColor: '#f9fafb', minHeight: '100vh' }}>
+    <div style={{ 
+      display: 'flex', 
+      height: '100vh', 
+      backgroundColor: '#ffffff', 
+      fontFamily: 'system-ui, -apple-system, sans-serif',
+      color: '#1e293b'
+    }}>
       
-      {/* ── Navbar ──────────────────────────────── */}
-      <header style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
-        padding: '0.75rem 2rem', 
-        backgroundColor: '#ffffff',
-        borderBottom: '1px solid #e5e7eb',
-        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)'
+      {/* SIDEBAR */}
+      <aside style={{
+        width: '220px',
+        backgroundColor: '#f8fafc',
+        borderRight: '1px solid #e5e7eb',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '24px 16px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <div style={{ width: '28px', height: '28px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="14" height="14" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="white">
+        {/* Logo */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px', paddingLeft: '4px' }}>
+          <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="12" height="12" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="white">
               <polygon points="3,13 8,3 13,13" />
             </svg>
           </div>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 600, color: '#111827', letterSpacing: '-0.025em' }}>Finaxis</h1>
+          <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
         </div>
 
-        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          
-          {/* Profile Switcher */}
-          <div ref={dropdownRef} style={{ position: 'relative' }}>
-            <button 
-              onClick={() => setShowDropdown(!showDropdown)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.5rem',
-                padding: '0.375rem 0.75rem',
-                backgroundColor: config.bg,
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-            >
-              <ActiveIcon size={16} />
-              <span style={{ fontSize: '0.875rem', fontWeight: 500, color: '#374151' }}>
-                Perfil {config.label}
-              </span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="m6 9 6 6 6-6"/>
-              </svg>
-            </button>
+        {/* Navigation */}
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '12px', paddingLeft: '12px' }}>GENERAL</div>
+          <SidebarItem icon={<IconInicio isActive={true} />} label="Inicio" active={true} />
+          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" onClick={() => navigate('/dashboard/analisis')} />
 
-            {/* Dropdown Menu */}
-            {showDropdown && (
-              <div style={{
-                position: 'absolute',
-                top: 'calc(100% + 0.5rem)',
-                right: 0,
-                width: '14rem',
-                backgroundColor: '#ffffff',
-                border: '1px solid #e5e7eb',
-                borderRadius: '8px',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
-                zIndex: 50,
-                overflow: 'hidden'
-              }}>
-                <div style={{ padding: '0.5rem 0' }}>
-                  <div style={{ padding: '0.25rem 1rem', fontSize: '0.75rem', fontWeight: 600, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                    Cambiar a:
-                  </div>
-                  
-                  {otrosPerfiles.length === 0 && (
-                    <div style={{ padding: '0.5rem 1rem', fontSize: '0.875rem', color: '#6b7280' }}>
-                      No tienes otros perfiles.
-                    </div>
-                  )}
+          <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
+          <SidebarItem icon={<IconSalas />} label="Mis salas" />
+          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" />
+        </div>
 
-                  {otrosPerfiles.map(perfil => {
-                    const oCfg = PROFILE_CONFIG[perfil.tipo];
-                    const OIcon = oCfg.Icon;
-                    return (
-                      <button
-                        key={perfil.id}
-                        onClick={() => handleSwitchProfile(perfil)}
-                        style={{
-                          width: '100%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.75rem',
-                          padding: '0.5rem 1rem',
-                          backgroundColor: 'transparent',
-                          border: 'none',
-                          cursor: 'pointer',
-                          textAlign: 'left'
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '4px', backgroundColor: oCfg.bg }}>
-                          <OIcon size={14} />
-                        </div>
-                        <span style={{ fontSize: '0.875rem', color: '#374151', fontWeight: 500 }}>
-                          {oCfg.label}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div style={{ borderTop: '1px solid #e5e7eb', padding: '0.5rem 0' }}>
-                  <button
-                    onClick={handleGestionarPerfiles}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      color: '#185FA5',
-                      fontSize: '0.875rem',
-                      fontWeight: 500
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#f3f4f6'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3" />
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                    </svg>
-                    Gestionar perfiles
-                  </button>
-                  <button
-                    onClick={handleLogout}
-                    style={{
-                      width: '100%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '0.75rem',
-                      padding: '0.5rem 1rem',
-                      backgroundColor: 'transparent',
-                      border: 'none',
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      color: '#ef4444',
-                      fontSize: '0.875rem',
-                      fontWeight: 500
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                      <polyline points="16 17 21 12 16 7" />
-                      <line x1="21" y1="12" x2="9" y2="12" />
-                    </svg>
-                    Cerrar sesión
-                  </button>
-                </div>
-              </div>
-            )}
+        {/* Sidebar Bottom (User info) */}
+        <div style={{ 
+          marginTop: 'auto',
+          paddingTop: '16px',
+          borderTop: '1px solid #e2e8f0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <div style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            backgroundColor: '#185FA5',
+            color: 'white',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '13px',
+            fontWeight: 600
+          }}>
+            {initials}
           </div>
-          
-        </div>
-      </header>
-      
-      {/* ── Main Content ────────────────────────────── */}
-      <main style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
-        <h2 style={{ color: '#111827', fontSize: '1.5rem', fontWeight: 600, marginBottom: '0.5rem' }}>
-          Bienvenido al nivel {config.label}
-        </h2>
-        <p style={{ color: '#4b5563' }}>Tu cuenta segura de Finaxis (<b>{user?.email}</b>)</p>
-        
-        {/* Placeholder cards for dashboard layout test */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginTop: '2rem' }}>
-          {[1,2,3].map(i => (
-            <div key={i} style={{ padding: '1.5rem', backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e5e7eb', boxShadow: '0 1px 2px 0 rgba(0,0,0,0.05)' }}>
-               <div style={{ width: '40px', height: '40px', borderRadius: '8px', backgroundColor: config.bg, marginBottom: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <ActiveIcon size={20} />
-               </div>
-               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.125rem', color: '#111827' }}>Módulo {i}</h3>
-               <p style={{ margin: 0, color: '#6b7280', fontSize: '0.875rem', lineHeight: 1.5 }}>Herramientas y opciones específicas según tu nivel de acceso para la gestión académica y operativa.</p>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {nombre}
             </div>
-          ))}
+            <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {user?.email}
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            style={{
+              padding: '6px',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: '#d1d5db',
+              cursor: 'pointer',
+              display: 'flex'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = '#fee2e2';
+              e.currentTarget.style.color = '#ef4444';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+              e.currentTarget.style.color = '#d1d5db';
+            }}
+          >
+            <IconLogout />
+          </button>
         </div>
-      </main>
+      </aside>
+
+      {/* MAIN CONTENT */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        
+        {/* Top bar */}
+        <header style={{
+          height: '64px',
+          padding: '0 24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderBottom: '1px solid #f1f5f9'
+        }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Bienvenido, {nombre}</h2>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>¿Qué quieres hacer hoy?</p>
+          </div>
+          <button style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            borderRadius: '8px',
+            backgroundColor: '#185FA5',
+            color: 'white',
+            border: 'none',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer'
+          }}>
+            <IconPlus />
+            <span>Crear sala</span>
+          </button>
+        </header>
+
+        {/* Body */}
+        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
+          
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
+            gap: '16px',
+            marginBottom: '40px'
+          }}>
+            <QuickActionCard 
+              icon={<IconAnalisis />}
+              title="Análisis personal"
+              description="Sube tu estado financiero y analiza"
+              onClick={() => navigate('/dashboard/analisis')}
+            />
+            <QuickActionCard 
+              icon={<IconUnirse />}
+              title="Unirse a una sala"
+              description="Ingresa un código de sala"
+              isDashed={true}
+              onClick={() => {}}
+            />
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em' }}>MIS SALAS RECIENTES</span>
+          </div>
+
+          <div style={{ 
+            border: '1px solid #f1f5f9',
+            borderRadius: '12px',
+            padding: '40px 20px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#fafafa'
+          }}>
+            <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Aún no has creado ninguna sala. Crea una para empezar.</p>
+          </div>
+
+        </main>
+      </div>
     </div>
   );
 }

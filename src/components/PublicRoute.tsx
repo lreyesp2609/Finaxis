@@ -22,7 +22,7 @@ export default function PublicRoute({ children }: { children: React.ReactNode })
   }
 
   if (session) {
-    window.location.replace('/perfiles');
+    window.location.replace('/dashboard');
     return null;
   }
 

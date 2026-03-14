@@ -47,7 +47,7 @@ export default function Login() {
       if (event.data === 'oauth-complete') {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          window.location.replace('/perfiles');
+          window.location.replace('/dashboard');
         }
       }
     };
@@ -56,7 +56,7 @@ export default function Login() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_IN' && session) {
-          window.location.replace('/perfiles');
+          window.location.replace('/dashboard');
         }
       }
     );
@@ -66,6 +66,20 @@ export default function Login() {
       subscription.unsubscribe();
     };
   }, [navigate]);
+
+  useEffect(() => {
+    window.history.pushState(null, document.title, window.location.href)
+    
+    const handlePopState = () => {
+      window.history.pushState(null, document.title, window.location.href)
+    }
+    
+    window.addEventListener('popstate', handlePopState)
+    
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, []);
 
   /* ── Client-side validation ─────────────────── */
   const validate = (): string => {
@@ -89,7 +103,7 @@ export default function Login() {
       if (error) {
         setError(translateAuthError(error.message));
       } else {
-        window.location.replace('/perfiles');
+        window.location.replace('/dashboard');
       }
     } catch {
       setError('Sin conexión. Verifica tu internet e intenta de nuevo.');

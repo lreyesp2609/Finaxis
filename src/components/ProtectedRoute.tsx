@@ -1,4 +1,3 @@
-import { Navigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -23,7 +22,8 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   }
 
   if (!session) {
-    return <Navigate to="/login" replace />
+    window.location.replace('/login');
+    return null;
   }
 
   return <>{children}</>

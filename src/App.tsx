@@ -1,38 +1,35 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
-import { ProfileProvider } from './context/ProfileContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import PublicRoute from './components/PublicRoute';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Perfiles from './pages/Perfiles';
 import Dashboard from './pages/Dashboard';
+import MisAnalisis from './pages/MisAnalisis';
 import AuthCallback from './pages/AuthCallback';
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ProfileProvider>
-          <Routes>
-            {/* OAuth Callback strictly handles exchanges and bounces to perfiles/login */}
-            <Route path="/auth/callback" element={<AuthCallback />} />
+        <Routes>
+          {/* OAuth Callback handles exchanges and bounces to dashboard/login */}
+          <Route path="/auth/callback" element={<AuthCallback />} />
 
-            {/* Root: always redirect to /login */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
+          {/* Root: always redirect to /login */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
 
-            {/* Public routes: logged-in users bounce to /perfiles */}
-            <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
-            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          {/* Public routes: logged-in users bounce to /dashboard */}
+          <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
-            {/* Protected routes: needs session */}
-            <Route path="/perfiles"  element={<ProtectedRoute><Perfiles /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          {/* Protected routes: needs session */}
+          <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+          <Route path="/dashboard/analisis" element={<ProtectedRoute><MisAnalisis /></ProtectedRoute>} />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/login" replace />} />
-          </Routes>
-        </ProfileProvider>
+          {/* Catch-all */}
+          <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

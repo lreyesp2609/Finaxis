@@ -47,7 +47,7 @@ export default function Register() {
       if (event.data === 'oauth-complete') {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          window.location.replace('/perfiles');
+          window.location.replace('/dashboard');
         }
       }
     };
@@ -56,7 +56,7 @@ export default function Register() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (event === 'SIGNED_IN' && session) {
-          window.location.replace('/perfiles');
+          window.location.replace('/dashboard');
         }
       }
     );

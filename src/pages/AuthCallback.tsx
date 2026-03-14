@@ -20,7 +20,7 @@ export default function AuthCallback() {
         window.close();
       } else {
         // Normal redirect flow (fallback for mobile environments or rigorously blocked popups)
-        window.location.replace(session ? '/perfiles' : '/login');
+        window.location.replace(session ? '/dashboard' : '/login');
       }
     };
 
