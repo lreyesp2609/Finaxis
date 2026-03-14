@@ -12,8 +12,8 @@ Esta guía detalla la organización del proyecto y la ubicación de los componen
 
 ### 📄 `pages/` (Vistas principales)
 Donde residen las páginas completas de la aplicación.
-- `Dashboard.tsx`: Panel principal con sidebar y navegación de salas.
-- `MisAnalisis.tsx`: Gestión de estados financieros y catálogos (usa pestañas e inline forms).
+- `Dashboard.tsx`: Panel principal con sidebar responsiva y navegación de salas.
+- `MisAnalisis.tsx`: Gestión de estados financieros y catálogos (usa pestañas e inline forms, adaptado a móvil).
 - `MisSalas.tsx`: Gestión de salas de colaboración creadas por el usuario.
 - `UnirseSala.tsx`: Interfaz para unirse a salas existentes mediante código (layout optimizado).
 - `Login.tsx` / `Register.tsx`: Flujos de autenticación (optimizados con replace y popups).
@@ -43,6 +43,12 @@ Ubicado en `pages/MisSalas.tsx` y `pages/UnirseSala.tsx`.
 - **Mis Salas**: Permite crear salas con configuraciones de tiempo, fechas y catálogo específico. Genera códigos únicos `FIN-XXXX`.
 - **Unirse a Sala**: Validación de códigos en tiempo real. Incluye restricción para que el creador no pueda unirse a su propia sala.
 - **Back Button**: Ambas páginas incluyen lógica de bloqueo del botón atrás para mantener la integridad de la sesión.
+
+### 4. Navegación Unificada y Responsividad
+Implementado en todas las páginas mediante `useNavigate` y `useLocation`.
+- **Sidebar Responsiva**: Se oculta automáticamente en dispositivos móviles (<768px).
+- **Menú Hamburguesa**: Botón (☰) para desplegar el menú lateral ocupando el 100% como overlay.
+- **Layout Adaptable**: Grids, formularios y componentes de texto (`word-break`) optimizados para pantallas pequeñas (360px+).
 
 ## 📝 Convenciones de Código
 - **Estilos**: Se prefiere CSS Modules (`.module.css`) para componentes complejos para evitar colisiones.

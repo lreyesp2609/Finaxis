@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styles from './UnirseSala.module.css';
 
 /* ── Icons ── */
@@ -47,6 +47,15 @@ function IconLogout() {
   );
 }
 
+function IconX({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
+
 function IconDoor() {
   return (
     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -82,11 +91,23 @@ function SidebarItem({ icon, label, active, onClick }: any) {
   );
 }
 
+function IconMenu() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+
 export default function UnirseSala() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [nombrePersona, setNombrePersona] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
   
   const [code, setCode] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -159,21 +180,36 @@ export default function UnirseSala() {
 
   return (
     <div className={styles.page}>
-      <aside style={{ width: '220px', backgroundColor: '#f8fafc', borderRight: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', padding: '24px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px', paddingLeft: '4px' }}>
-          <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="white"><polygon points="3,13 8,3 13,13" /></svg>
+      {/* Botón Hamburguesa Móvil */}
+      <button className={styles.hamburger} onClick={() => setIsSidebarOpen(true)}>
+        <IconMenu />
+      </button>
+
+      {/* Overlay para cerrar sidebar en móvil */}
+      {isSidebarOpen && <div className={styles.sidebarOverlay} onClick={() => setIsSidebarOpen(false)} />}
+
+      <aside className={`${styles.sidebar} ${isSidebarOpen ? styles.sidebarOpen : ''}`}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', paddingLeft: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="white"><polygon points="3,13 8,3 13,13" /></svg>
+            </div>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
           </div>
-          <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
+          <button className={styles.closeSidebar} onClick={() => setIsSidebarOpen(false)}>
+            <IconX size={20} />
+          </button>
         </div>
+        
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '12px', paddingLeft: '12px' }}>GENERAL</div>
-          <SidebarItem icon={<IconInicio />} label="Inicio" onClick={() => navigate('/dashboard')} />
-          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" onClick={() => navigate('/dashboard/analisis')} />
+          <SidebarItem icon={<IconInicio />} label="Inicio" active={location.pathname === '/dashboard'} onClick={() => navigate('/dashboard')} />
+          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" active={location.pathname === '/dashboard/analisis'} onClick={() => navigate('/dashboard/analisis')} />
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
-          <SidebarItem icon={<IconSalas />} label="Mis salas" onClick={() => navigate('/dashboard/salas')} />
-          <SidebarItem icon={<IconUnirse isActive={true} />} label="Unirse a sala" active={true} />
+          <SidebarItem icon={<IconSalas />} label="Mis salas" active={location.pathname === '/dashboard/salas'} onClick={() => navigate('/dashboard/salas')} />
+          <SidebarItem icon={<IconUnirse isActive={location.pathname === '/dashboard/unirse'} />} label="Unirse a sala" active={location.pathname === '/dashboard/unirse'} />
         </div>
+
         <div style={{ marginTop: 'auto', paddingTop: '16px', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#185FA5', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '13px', fontWeight: 600 }}>{initials}</div>
           <div style={{ flex: 1, minWidth: 0 }}>

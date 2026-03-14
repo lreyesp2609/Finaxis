@@ -15,7 +15,47 @@
   overflow-y: auto;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  padding: 2rem;
+}
+
+.sidebar {
+  width: 220px;
+  background-color: #f8fafc;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  transition: transform 0.3s ease;
+}
+
+.hamburger {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 50;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.sidebarOverlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.3);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+}
+
+.closeSidebar {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
 }
 
 .centeredContent {
@@ -228,3 +268,56 @@
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+.sidebarOpen {}
+
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 100;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+  }
+
+  .sidebarOpen {
+    transform: translateX(0);
+  }
+
+  .hamburger {
+    display: block;
+  }
+
+  .sidebarOverlay {
+    display: block;
+  }
+
+  .closeSidebar {
+    display: block;
+  }
+
+  .main {
+    padding: 4rem 1.5rem 1.5rem 1.5rem;
+  }
+
+  .header h2 {
+    font-size: 16px;
+  }
+
+  .card {
+    padding: 1.25rem;
+  }
+
+  .codeInput {
+    padding: 0.75rem;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+}
+
+@media (max-width: 480px) {
+  .main {
+    padding: 4rem 1rem 1rem 1rem;
+  }
+}

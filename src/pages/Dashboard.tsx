@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 /* ── Icons ─────────────────────────────────────── */
 function IconInicio({ isActive }: { isActive?: boolean }) {
@@ -64,6 +64,23 @@ function IconLogout() {
     </svg>
   );
 }
+
+function IconMenu() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
+    </svg>
+  );
+}
+
+function IconX({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  );
+}
+
 
 /* ── Sidebar Item Component ────────────────────── */
 interface SidebarItemProps {
@@ -159,8 +176,11 @@ function QuickActionCard({ icon, title, description, isDashed, onClick }: any) {
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const [nombre, setNombre] = useState<string>('');
+  const location = useLocation();
+  const [nombrePersona, setNombrePersona] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
 
   useEffect(() => {
     async function getPersona() {
@@ -172,7 +192,7 @@ export default function Dashboard() {
           .eq('id', user.id)
           .maybeSingle();
 
-        if (data) setNombre(data.nombre);
+        if (data) setNombrePersona(data.nombre);
       } catch (err) {
         console.error('Error fetching persona:', err);
       } finally {
@@ -207,45 +227,133 @@ export default function Dashboard() {
     );
   }
 
-  const initials = nombre ? nombre.charAt(0).toUpperCase() : '?';
+  const initials = nombrePersona ? nombrePersona.charAt(0).toUpperCase() : '?';
 
   return (
-    <div style={{ 
-      display: 'flex', 
-      height: '100vh', 
-      backgroundColor: '#ffffff', 
-      fontFamily: 'system-ui, -apple-system, sans-serif',
-      color: '#1e293b'
-    }}>
-      
-      {/* SIDEBAR */}
-      <aside style={{
-        width: '220px',
-        backgroundColor: '#f8fafc',
-        borderRight: '1px solid #e5e7eb',
-        display: 'flex',
-        flexDirection: 'column',
-        padding: '24px 16px'
-      }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '32px', paddingLeft: '4px' }}>
-          <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="12" height="12" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" fill="white">
-              <polygon points="3,13 8,3 13,13" />
-            </svg>
-          </div>
-          <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
-        </div>
+    <div className="dashboard-page">
+      <style>{`
+        .dashboard-page {
+          display: flex;
+          height: 100vh;
+          background-color: #ffffff;
+          font-family: system-ui, -apple-system, sans-serif;
+          color: #1e293b;
+          overflow: hidden;
+        }
+        .main-content {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
+          min-width: 0;
+          overflow-y: auto;
+          padding: 2rem;
+        }
+        .sidebar {
+          width: 220px;
+          background-color: #f8fafc;
+          border-right: 1px solid #e5e7eb;
+          display: flex;
+          flex-direction: column;
+          padding: 24px 16px;
+          transition: transform 0.3s ease;
+        }
+        .hamburger {
+          display: none;
+          position: fixed;
+          top: 1rem;
+          left: 1rem;
+          z-index: 50;
+          background: white;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 8px;
+          cursor: pointer;
+        }
+        .sidebar-overlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(0,0,0,0.3);
+          backdrop-filter: blur(2px);
+          z-index: 90;
+        }
+        .close-sidebar {
+          display: none;
+          background: transparent;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+        }
+        @media (max-width: 768px) {
+          .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            z-index: 100;
+            transform: translateX(-100%);
+            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+          }
+          .sidebar-open {
+            transform: translateX(0);
+          }
+          .hamburger {
+            display: block;
+          }
+          .sidebar-overlay {
+            display: block;
+          }
+          .close-sidebar {
+            display: block;
+          }
+          .main-content {
+            padding: 4rem 1.5rem 1.5rem 1.5rem;
+          }
+          .top-bar-flex {
+            flex-direction: column;
+            align-items: flex-start !important;
+            gap: 0.75rem;
+          }
+          .grid-responsive {
+            grid-template-columns: 1fr !important;
+          }
+        }
+        @media (max-width: 480px) {
+          .main-content {
+            padding: 4rem 1rem 1rem 1rem;
+          }
+        }
+      `}</style>
 
-        {/* Navigation */}
+      {/* Botón Hamburguesa Móvil */}
+      <button className="hamburger" onClick={() => setIsSidebarOpen(true)}>
+        <IconMenu />
+      </button>
+
+      {/* Overlay para cerrar sidebar en móvil */}
+      {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />}
+
+      <aside className={`sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', paddingLeft: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="white"><polygon points="3,13 8,3 13,13" /></svg>
+            </div>
+            <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
+          </div>
+          <button className="close-sidebar" onClick={() => setIsSidebarOpen(false)}>
+            <IconX size={20} />
+          </button>
+        </div>
+        
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '12px', paddingLeft: '12px' }}>GENERAL</div>
-          <SidebarItem icon={<IconInicio isActive={true} />} label="Inicio" active={true} />
-          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" onClick={() => navigate('/dashboard/analisis')} />
+          <SidebarItem icon={<IconInicio isActive={location.pathname === '/dashboard'} />} label="Inicio" active={location.pathname === '/dashboard'} onClick={() => { navigate('/dashboard'); setIsSidebarOpen(false); }} />
+          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" active={location.pathname === '/dashboard/analisis'} onClick={() => { navigate('/dashboard/analisis'); setIsSidebarOpen(false); }} />
 
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
-          <SidebarItem icon={<IconSalas />} label="Mis salas" onClick={() => navigate('/dashboard/salas')} />
-          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" onClick={() => navigate('/dashboard/unirse')} />
+          <SidebarItem icon={<IconSalas />} label="Mis salas" active={location.pathname === '/dashboard/salas'} onClick={() => { navigate('/dashboard/salas'); setIsSidebarOpen(false); }} />
+          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" active={location.pathname === '/dashboard/unirse'} onClick={() => { navigate('/dashboard/unirse'); setIsSidebarOpen(false); }} />
         </div>
 
         {/* Sidebar Bottom (User info) */}
@@ -273,7 +381,7 @@ export default function Dashboard() {
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {nombre}
+              {nombrePersona || 'Usuario'}
             </div>
             <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {user?.email}
@@ -305,58 +413,47 @@ export default function Dashboard() {
       </aside>
 
       {/* MAIN CONTENT */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        
-        {/* Top bar */}
+      <div className="main-content">
         <header style={{
           height: '64px',
           padding: '0 24px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          borderBottom: '1px solid #f1f5f9'
-        }}>
+          borderBottom: '1px solid #f1f5f9',
+          marginBottom: '2rem'
+        }} className="top-bar-flex">
           <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>Bienvenido, {nombre}</h2>
-            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>¿Qué quieres hacer hoy?</p>
+            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>¡Hola, {nombrePersona || 'Usuario'}! 👋</h2>
+            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Bienvenido a tu panel de control financiero.</p>
           </div>
-          <button style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            padding: '8px 16px',
-            borderRadius: '8px',
-            backgroundColor: '#185FA5',
-            color: 'white',
-            border: 'none',
-            fontSize: '14px',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}>
+          <button 
+            onClick={() => navigate('/dashboard/analisis')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#185FA5', color: 'white',
+              border: 'none', padding: '10px 18px', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+              boxShadow: '0 4px 6px -1px rgba(24, 95, 165, 0.2)', transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#14508a'}
+            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#185FA5'}
+          >
             <IconPlus />
-            <span>Crear sala</span>
+            Nuevo Análisis
           </button>
         </header>
 
-        {/* Body */}
-        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-          
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
-            gap: '16px',
-            marginBottom: '40px'
-          }}>
+        <main style={{ flex: 1 }}>
+          <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
             <QuickActionCard 
-              icon={<IconAnalisis />}
-              title="Análisis personal"
-              description="Sube tu estado financiero y analiza"
+              icon={<IconPlus />} 
+              title="Crear un nuevo análisis" 
+              description="Sube estados financieros en PDF y genera análisis vertical, horizontal y ratios."
               onClick={() => navigate('/dashboard/analisis')}
             />
             <QuickActionCard 
-              icon={<IconUnirse />}
-              title="Unirse a una sala"
-              description="Ingresa un código de sala"
+              icon={<IconUnirse />} 
+              title="Unirse a una sala" 
+              description="Usa un código compartido para participar en una sala de colaboración."
               isDashed={true}
               onClick={() => navigate('/dashboard/unirse')}
             />
@@ -378,9 +475,9 @@ export default function Dashboard() {
           }}>
             <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Aún no has creado ninguna sala. Crea una para empezar.</p>
           </div>
-
         </main>
       </div>
     </div>
   );
 }
+
