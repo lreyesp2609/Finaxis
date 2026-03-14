@@ -125,7 +125,7 @@ function IconList({ size = 64 }) {
 /* ── Sidebar Item Component ── */
 function SidebarItem({ icon, label, active, onClick }: any) {
   return (
-    <div 
+    <div
       onClick={onClick}
       style={{
         display: 'flex',
@@ -177,17 +177,17 @@ export default function MisAnalisis() {
   const [nombrePersona, setNombrePersona] = useState('');
   const [loading, setLoading] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   // State for Lists
   const [analisisList, setAnalisisList] = useState<any[]>([]);
   const [catalogsList, setCatalogsList] = useState<any[]>([]);
-  
+
   // Form Visibility
   const [showAnalisisForm, setShowAnalisisForm] = useState(false);
   const [showCatalogForm, setShowCatalogForm] = useState(false);
   const [showInlinePicker, setShowInlinePicker] = useState(false);
   const [pickerTab, setPickerTab] = useState<'mis' | 'publicos'>('mis');
-  
+
   // Form Fields - Analysis
   const [formAnNombre, setFormAnNombre] = useState('');
   const [formAnDesc, setFormAnDesc] = useState('');
@@ -195,7 +195,7 @@ export default function MisAnalisis() {
   const [formAnFile, setFormAnFile] = useState<File | null>(null);
   const [formAnCatalog, setFormAnCatalog] = useState<any>(null);
   const [isCreatingAn, setIsCreatingAn] = useState(false);
-  
+
   // Form Fields - Catalog
   const [formCatNombre, setFormCatNombre] = useState('');
   const [formCatDesc, setFormCatDesc] = useState('');
@@ -211,6 +211,20 @@ export default function MisAnalisis() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const catFileInputRef = useRef<HTMLInputElement>(null);
+
+  //Para cargar catalogos
+  const [catalogTab, setCatalogTab] = useState<'mis' | 'publicos'>('mis');
+  const [searchCat, setSearchCat] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [catPage, setCatPage] = useState(0);
+  const [pubCatPage, setPubCatPage] = useState(0);
+  const [publicCatalogsList, setPublicCatalogsList] = useState<any[]>([]);
+  const [catTotal, setCatTotal] = useState(0);
+  const [pubCatTotal, setPubCatTotal] = useState(0);
+  const [loadingCats, setLoadingCats] = useState(false);
+  const [loadingPubCats, setLoadingPubCats] = useState(false);
+  const CAT_PAGE_SIZE = 8;
+  //------------------------------------------------------------------------
 
   // Mock Public Catalogs
   const publicCatalogs = [
@@ -239,6 +253,62 @@ export default function MisAnalisis() {
     setTimeout(() => setToast(null), 4000);
   };
 
+
+  //Para cargar datos
+
+  useEffect(() => {
+    if (activeTab !== 'catalogos') return;
+    if (catalogTab === 'mis') {
+      loadMisCatalogos(catPage, searchCat);
+    } else {
+      loadCatalogosPublicos(pubCatPage, searchCat);
+    }
+  }, [activeTab, catalogTab, catPage, pubCatPage, searchCat]);
+
+
+
+  const loadMisCatalogos = async (page: number, search: string) => {
+    setLoadingCats(true);
+    const { data, error } = await supabase.rpc('get_mis_catalogos', {
+      p_limit: CAT_PAGE_SIZE,
+      p_offset: page * CAT_PAGE_SIZE,
+      p_search: search,
+    });
+    if (!error && data) {
+      setCatalogsList(data.map((c: any) => ({
+        id: c.id.toString(),
+        nombre: c.nombre,
+        descripcion: c.descripcion,
+        tipo: c.publico ? 'public' : 'private',
+        created_at: c.created_at,
+      })));
+      setCatTotal(data[0]?.total_count ?? 0);
+    }
+    setLoadingCats(false);
+  };
+
+
+
+  const loadCatalogosPublicos = async (page: number, search: string) => {
+    setLoadingPubCats(true);
+    const { data, error } = await supabase.rpc('get_catalogos_publicos', {
+      p_limit: CAT_PAGE_SIZE,
+      p_offset: page * CAT_PAGE_SIZE,
+      p_search: search,
+    });
+    if (!error && data) {
+      setPublicCatalogsList(data.map((c: any) => ({
+        id: c.id.toString(),
+        nombre: c.nombre,
+        descripcion: c.descripcion,
+        autor_nombre: c.autor_nombre,
+        created_at: c.created_at,
+      })));
+      setPubCatTotal(data[0]?.total_count ?? 0);
+    }
+    setLoadingPubCats(false);
+  };
+
   const createAnalisis = async () => {
     if (!formAnNombre || !formAnCatalog || !formAnPeriodo) return;
     setIsCreatingAn(true);
@@ -261,26 +331,58 @@ export default function MisAnalisis() {
     setFormAnCatalog(null);
     showToast('✓ Estado financiero creado');
   };
-
+  //Nuevo crear catalogo
   const createCatalog = async () => {
     if (!formCatNombre) return;
     setIsCreatingCat(true);
-    await new Promise(r => setTimeout(r, 1500));
+
+    const { data, error } = await supabase.rpc('crear_catalogo', {
+      p_nombre: formCatNombre,
+      p_descripcion: formCatDesc || null,
+      p_publico: formCatPublic,
+    });
+
+    if (error) {
+      console.error(error);
+      showToast('Error al crear catálogo');
+      setIsCreatingCat(false);
+      return;
+    }
+
+    const nuevo = data[0]; // La función retorna un array de filas
+
     const newCat = {
-      id: Date.now().toString(),
-      nombre: formCatNombre,
-      descripcion: formCatDesc,
-      tipo: formCatPublic ? 'public' : 'private',
-      created_at: new Date().toISOString()
+      id: nuevo.id.toString(),
+      nombre: nuevo.nombre,
+      descripcion: nuevo.descripcion,
+      tipo: nuevo.publico ? 'public' : 'private',
+      created_at: nuevo.created_at,
     };
-    setCatalogsList([newCat, ...catalogsList]);
+
+    await loadMisCatalogos(0, searchCat);
+    setCatPage(0);
     setIsCreatingCat(false);
     setShowCatalogForm(false);
     setFormCatNombre('');
     setFormCatDesc('');
     setFormCatFile(null);
     showToast('✓ Catálogo creado');
+
+
   };
+
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleSearchChange = (val: string) => {
+    setSearchInput(val);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setSearchCat(val);
+      setCatPage(0);
+      setPubCatPage(0);
+    }, 400);
+  };
+
 
   if (loading) return null;
 
@@ -309,7 +411,7 @@ export default function MisAnalisis() {
             <IconX size={20} />
           </button>
         </div>
-        
+
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '12px', paddingLeft: '12px' }}>GENERAL</div>
           <SidebarItem icon={<IconInicio />} label="Inicio" active={location.pathname === '/dashboard'} onClick={() => navigate('/dashboard')} />
@@ -336,7 +438,7 @@ export default function MisAnalisis() {
         </nav>
 
         <main className={styles.contentArea}>
-          
+
           {activeTab === 'estados' ? (
             <>
               <div className={styles.topBar}>
@@ -398,81 +500,81 @@ export default function MisAnalisis() {
 
                     {showInlinePicker && (
                       <div className={styles.inlineSelector}>
-                         <div className={styles.selectorTabs}>
-                            <button className={`${styles.selTab} ${pickerTab === 'mis' ? styles.selTabActive : ''}`} onClick={() => setPickerTab('mis')}>Mis catálogos</button>
-                            <button className={`${styles.selTab} ${pickerTab === 'publicos' ? styles.selTabActive : ''}`} onClick={() => setPickerTab('publicos')}>Catálogos públicos</button>
-                         </div>
-                         <div className={styles.pickerContent}>
-                            {pickerTab === 'mis' ? (
-                              <div style={{ textAlign: 'center', padding: '12px' }}>
-                                {catalogsList.length === 0 ? (
-                                  <>
-                                    <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 10px 0' }}>No tienes catálogos. Ve a la pestaña Catálogos para crear uno.</p>
-                                    <span style={{ color: '#185FA5', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }} onClick={() => setActiveTab('catalogos')}>Ir a Catálogos →</span>
-                                  </>
-                                ) : (
-                                  <div className={styles.catalogItem}>
-                                     {catalogsList.map(c => (
-                                       <div key={c.id} className={styles.catalogItem}>
-                                         <div className={styles.catInfo}>
-                                           <IconLock /><span className={styles.catName}>{c.nombre}</span>
-                                           <span className={styles.badgePriv}>Privado</span>
-                                         </div>
-                                         <button className={styles.smBtn} onClick={() => { setFormAnCatalog(c); setShowInlinePicker(false); }}>Seleccionar</button>
-                                       </div>
-                                     ))}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <div>
-                                <input type="text" className={styles.inputField} style={{ width: '100%', marginBottom: '12px', fontSize: '12px', padding: '6px 10px' }} placeholder="Buscar..." value={searchPicker} onChange={e => setSearchPicker(e.target.value)} />
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
-                                  {publicCatalogs.filter(c => c.nombre.toLowerCase().includes(searchPicker.toLowerCase())).map(c => (
-                                    <div key={c.id} style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }} onClick={() => { setFormAnCatalog(c); setShowInlinePicker(false); }}>
-                                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><IconGlobe size={14}/><span className={styles.badgePub}>Público</span></div>
-                                       <div style={{ fontSize: '12px', fontWeight: 600 }}>{c.nombre}</div>
-                                       <div style={{ fontSize: '10px', color: '#94a3b8' }}>{c.cuentas} cuentas · por: {c.autor}</div>
+                        <div className={styles.selectorTabs}>
+                          <button className={`${styles.selTab} ${pickerTab === 'mis' ? styles.selTabActive : ''}`} onClick={() => setPickerTab('mis')}>Mis catálogos</button>
+                          <button className={`${styles.selTab} ${pickerTab === 'publicos' ? styles.selTabActive : ''}`} onClick={() => setPickerTab('publicos')}>Catálogos públicos</button>
+                        </div>
+                        <div className={styles.pickerContent}>
+                          {pickerTab === 'mis' ? (
+                            <div style={{ textAlign: 'center', padding: '12px' }}>
+                              {catalogsList.length === 0 ? (
+                                <>
+                                  <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 10px 0' }}>No tienes catálogos. Ve a la pestaña Catálogos para crear uno.</p>
+                                  <span style={{ color: '#185FA5', fontSize: '13px', cursor: 'pointer', fontWeight: 600 }} onClick={() => setActiveTab('catalogos')}>Ir a Catálogos →</span>
+                                </>
+                              ) : (
+                                <div className={styles.catalogItem}>
+                                  {catalogsList.map(c => (
+                                    <div key={c.id} className={styles.catalogItem}>
+                                      <div className={styles.catInfo}>
+                                        <IconLock /><span className={styles.catName}>{c.nombre}</span>
+                                        <span className={styles.badgePriv}>Privado</span>
+                                      </div>
+                                      <button className={styles.smBtn} onClick={() => { setFormAnCatalog(c); setShowInlinePicker(false); }}>Seleccionar</button>
                                     </div>
                                   ))}
                                 </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div>
+                              <input type="text" className={styles.inputField} style={{ width: '100%', marginBottom: '12px', fontSize: '12px', padding: '6px 10px' }} placeholder="Buscar..." value={searchPicker} onChange={e => setSearchPicker(e.target.value)} />
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                {publicCatalogs.filter(c => c.nombre.toLowerCase().includes(searchPicker.toLowerCase())).map(c => (
+                                  <div key={c.id} style={{ padding: '10px', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer' }} onClick={() => { setFormAnCatalog(c); setShowInlinePicker(false); }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}><IconGlobe size={14} /><span className={styles.badgePub}>Público</span></div>
+                                    <div style={{ fontSize: '12px', fontWeight: 600 }}>{c.nombre}</div>
+                                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>{c.cuentas} cuentas · por: {c.autor}</div>
+                                  </div>
+                                ))}
                               </div>
-                            )}
-                         </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
 
                     <div className={styles.formFooter}>
-                       <button className={styles.secondaryBtn} onClick={() => setShowAnalisisForm(false)}>Cancelar</button>
-                       <button className={styles.primaryBtn} disabled={!formAnNombre || !formAnCatalog || !formAnPeriodo || isCreatingAn} onClick={createAnalisis}>
-                          {isCreatingAn ? <><div className={styles.spinner}/> Creando...</> : 'Crear análisis'}
-                       </button>
+                      <button className={styles.secondaryBtn} onClick={() => setShowAnalisisForm(false)}>Cancelar</button>
+                      <button className={styles.primaryBtn} disabled={!formAnNombre || !formAnCatalog || !formAnPeriodo || isCreatingAn} onClick={createAnalisis}>
+                        {isCreatingAn ? <><div className={styles.spinner} /> Creando...</> : 'Crear análisis'}
+                      </button>
                     </div>
                   </div>
                 </div>
               ) : analisisList.length === 0 ? (
                 <div className={styles.emptyState}>
-                   <IconList />
-                   <h3>No tienes estados financieros aún</h3>
-                   <p>Crea tu primer análisis financiero</p>
+                  <IconList />
+                  <h3>No tienes estados financieros aún</h3>
+                  <p>Crea tu primer análisis financiero</p>
                 </div>
               ) : (
                 <div className={styles.grid}>
-                   {analisisList.map(an => (
-                     <div key={an.id} className={styles.card}>
-                        <span className={styles.cardTag}>{an.catalogo_nombre}</span>
-                        <h4 className={styles.cardTitle}>{an.nombre}</h4>
-                        <p className={styles.cardDesc}>{an.descripcion || 'Sin descripción'}</p>
-                        <div className={styles.cardMeta}>Período: {an.periodo}</div>
-                        <div className={styles.cardFooter}>
-                           <span className={styles.cardMeta}>{new Date(an.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver análisis</span>
-                              <button className={styles.menuBtn}><IconDots /></button>
-                           </div>
+                  {analisisList.map(an => (
+                    <div key={an.id} className={styles.card}>
+                      <span className={styles.cardTag}>{an.catalogo_nombre}</span>
+                      <h4 className={styles.cardTitle}>{an.nombre}</h4>
+                      <p className={styles.cardDesc}>{an.descripcion || 'Sin descripción'}</p>
+                      <div className={styles.cardMeta}>Período: {an.periodo}</div>
+                      <div className={styles.cardFooter}>
+                        <span className={styles.cardMeta}>{new Date(an.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver análisis</span>
+                          <button className={styles.menuBtn}><IconDots /></button>
                         </div>
-                     </div>
-                   ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
@@ -481,92 +583,201 @@ export default function MisAnalisis() {
               <div className={styles.topBar}>
                 <div className={styles.titleSection}>
                   <h2>Catálogos</h2>
-                  <p>Gestiona tus catálogos de cuentas</p>
+                  <p>Gestiona y explora catálogos de cuentas</p>
                 </div>
-                {!showCatalogForm && (
-                  <button className={styles.primaryBtn} onClick={() => setShowCatalogForm(true)}>+ Crear catálogo</button>
+                {!showCatalogForm && catalogTab === 'mis' && (
+                  <button className={styles.primaryBtn} onClick={() => setShowCatalogForm(true)}>
+                    + Crear catálogo
+                  </button>
                 )}
               </div>
 
+              {/* Sub-tabs Mis / Públicos */}
+              {!showCatalogForm && (
+                <div className={styles.subTabsBar}>
+                  <button
+                    className={`${styles.subTabBtn} ${catalogTab === 'mis' ? styles.subTabActive : ''}`}
+                    onClick={() => { setCatalogTab('mis'); setSearchInput(''); setSearchCat(''); }}
+                  >
+                    Mis catálogos
+                    {catTotal > 0 && <span className={styles.countBadge}>{catTotal}</span>}
+                  </button>
+                  <button
+                    className={`${styles.subTabBtn} ${catalogTab === 'publicos' ? styles.subTabActive : ''}`}
+                    onClick={() => { setCatalogTab('publicos'); setSearchInput(''); setSearchCat(''); }}
+                  >
+                    Públicos
+                    {pubCatTotal > 0 && <span className={styles.countBadge}>{pubCatTotal}</span>}
+                  </button>
+                </div>
+              )}
+
               {showCatalogForm ? (
-                 <div className={styles.inlineFormCard}>
-                    <div className={styles.formHeader}>
-                      <h3>Nuevo catálogo</h3>
-                      <button className={styles.closeFormBtn} onClick={() => setShowCatalogForm(false)}><IconX /></button>
+                <div className={styles.inlineFormCard}>
+                  <div className={styles.formHeader}>
+                    <h3>Nuevo catálogo</h3>
+                    <button className={styles.closeFormBtn} onClick={() => setShowCatalogForm(false)}><IconX /></button>
+                  </div>
+                  <div className={styles.formGrid}>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Nombre</label>
+                      <input type="text" className={styles.inputField} placeholder="Ej: Catálogo SB Bancos 2024" value={formCatNombre} onChange={e => setFormCatNombre(e.target.value)} />
                     </div>
-                    <div className={styles.formGrid}>
-                       <div className={styles.formGroup}>
-                          <label className={styles.label}>Nombre</label>
-                          <input type="text" className={styles.inputField} placeholder="Ej: Catálogo SB Bancos 2024" value={formCatNombre} onChange={e => setFormCatNombre(e.target.value)} />
-                       </div>
-                       <div className={styles.formGroup}>
-                          <label className={styles.label}>Descripción</label>
-                          <textarea className={`${styles.inputField} ${styles.textareaField}`} rows={3} placeholder="Descripción opcional..." value={formCatDesc} onChange={e => setFormCatDesc(e.target.value)} />
-                       </div>
-                       <div className={styles.formGroup}>
-                          <label className={styles.label}>Archivo PDF</label>
-                          <button className={styles.outlineBtn} onClick={() => catFileInputRef.current?.click()}>
-                             <IconAttachment /> {formCatFile ? formCatFile.name : 'Subir PDF del catálogo'}
-                          </button>
-                          <input type="file" ref={catFileInputRef} hidden accept=".pdf" onChange={e => setFormCatFile(e.target.files?.[0] || null)} />
-                       </div>
-                       <div className={styles.formGroup}>
-                          <label className={styles.label}>Visibilidad</label>
-                          <div className={styles.radioGrid}>
-                             <div className={`${styles.radioCard} ${!formCatPublic ? styles.radioCardSelectedGray : ''}`} onClick={() => setFormCatPublic(false)}>
-                                <div className={`${styles.radioIconBox}`}><IconLock /></div>
-                                <div className={styles.radioContent}>
-                                   <span className={styles.radioLabel}>Privado</span>
-                                   <span className={styles.radioDesc}>Solo tú puedes usarlo</span>
-                                </div>
-                             </div>
-                             <div className={`${styles.radioCard} ${formCatPublic ? styles.radioCardSelected : ''}`} onClick={() => setFormCatPublic(true)}>
-                                <div className={`${styles.radioIconBox} ${styles.radioIconBoxBlue}`}><IconGlobe size={18} /></div>
-                                <div className={styles.radioContent}>
-                                   <span className={styles.radioLabel}>Público</span>
-                                   <span className={styles.radioDesc}>Disponible como plantilla para todos</span>
-                                </div>
-                             </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Descripción</label>
+                      <textarea className={`${styles.inputField} ${styles.textareaField}`} rows={3} placeholder="Descripción opcional..." value={formCatDesc} onChange={e => setFormCatDesc(e.target.value)} />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Archivo PDF</label>
+                      <button className={styles.outlineBtn} onClick={() => catFileInputRef.current?.click()}>
+                        <IconAttachment /> {formCatFile ? formCatFile.name : 'Subir PDF del catálogo'}
+                      </button>
+                      <input type="file" ref={catFileInputRef} hidden accept=".pdf" onChange={e => setFormCatFile(e.target.files?.[0] || null)} />
+                    </div>
+                    <div className={styles.formGroup}>
+                      <label className={styles.label}>Visibilidad</label>
+                      <div className={styles.radioGrid}>
+                        <div className={`${styles.radioCard} ${!formCatPublic ? styles.radioCardSelectedGray : ''}`} onClick={() => setFormCatPublic(false)}>
+                          <div className={`${styles.radioIconBox}`}><IconLock /></div>
+                          <div className={styles.radioContent}>
+                            <span className={styles.radioLabel}>Privado</span>
+                            <span className={styles.radioDesc}>Solo tú puedes usarlo</span>
                           </div>
-                       </div>
-                       <div className={styles.formFooter}>
-                          <button className={styles.secondaryBtn} onClick={() => setShowCatalogForm(false)}>Cancelar</button>
-                          <button className={styles.primaryBtn} disabled={!formCatNombre || isCreatingCat} onClick={createCatalog}>
-                            {isCreatingCat ? <><div className={styles.spinner}/> Creando...</> : 'Crear catálogo'}
-                          </button>
-                       </div>
+                        </div>
+                        <div className={`${styles.radioCard} ${formCatPublic ? styles.radioCardSelected : ''}`} onClick={() => setFormCatPublic(true)}>
+                          <div className={`${styles.radioIconBox} ${styles.radioIconBoxBlue}`}><IconGlobe size={18} /></div>
+                          <div className={styles.radioContent}>
+                            <span className={styles.radioLabel}>Público</span>
+                            <span className={styles.radioDesc}>Disponible como plantilla para todos</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                 </div>
-              ) : catalogsList.length === 0 ? (
-                <div className={styles.emptyState}>
-                   <IconList />
-                   <h3>No tienes catálogos aún</h3>
-                   <p>Crea tu primer catálogo de cuentas</p>
+                    <div className={styles.formFooter}>
+                      <button className={styles.secondaryBtn} onClick={() => setShowCatalogForm(false)}>Cancelar</button>
+                      <button className={styles.primaryBtn} disabled={!formCatNombre || isCreatingCat} onClick={createCatalog}>
+                        {isCreatingCat ? <><div className={styles.spinner} /> Creando...</> : 'Crear catálogo'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <div className={styles.grid}>
-                   {catalogsList.map(cat => (
-                     <div key={cat.id} className={styles.card}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                           <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: cat.tipo === 'public' ? '#E6F1FB' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: cat.tipo === 'public' ? '#185FA5' : '#64748b' }}>
-                              {cat.tipo === 'public' ? <IconGlobe /> : <IconLock />}
-                           </div>
-                           <span className={`${styles.badge} ${cat.tipo === 'public' ? styles.badgePub : styles.badgePriv}`}>
-                              {cat.tipo === 'public' ? 'Público' : 'Privado'}
-                           </span>
+                <>
+                  {/* Buscador */}
+                  <div className={styles.searchBar}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#94a3b8', flexShrink: 0 }}>
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                    <input
+                      type="text"
+                      className={styles.searchInput}
+                      placeholder={`Buscar en ${catalogTab === 'mis' ? 'mis catálogos' : 'catálogos públicos'}...`}
+                      value={searchInput}
+                      onChange={e => handleSearchChange(e.target.value)}
+                    />
+                    {searchInput && (
+                      <button className={styles.clearSearch} onClick={() => { setSearchInput(''); setSearchCat(''); }}>
+                        <IconX size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Contenido mis catálogos */}
+                  {catalogTab === 'mis' && (
+                    loadingCats ? (
+                      <div className={styles.loadingState}>
+                        <div className={styles.spinner} style={{ width: 28, height: 28 }} />
+                      </div>
+                    ) : catalogsList.length === 0 ? (
+                      <div className={styles.emptyState}>
+                        <IconList />
+                        <h3>{searchCat ? 'Sin resultados' : 'No tienes catálogos aún'}</h3>
+                        <p>{searchCat ? `No hay catálogos que coincidan con "${searchCat}"` : 'Crea tu primer catálogo de cuentas'}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={styles.grid}>
+                          {catalogsList.map(cat => (
+                            <div key={cat.id} className={styles.card}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: cat.tipo === 'public' ? '#E6F1FB' : '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', color: cat.tipo === 'public' ? '#185FA5' : '#64748b' }}>
+                                  {cat.tipo === 'public' ? <IconGlobe /> : <IconLock />}
+                                </div>
+                                <span className={`${styles.badge} ${cat.tipo === 'public' ? styles.badgePub : styles.badgePriv}`}>
+                                  {cat.tipo === 'public' ? 'Público' : 'Privado'}
+                                </span>
+                              </div>
+                              <h4 className={styles.cardTitle}>{cat.nombre}</h4>
+                              <p className={styles.cardDesc}>{cat.descripcion || 'Sin descripción'}</p>
+                              <div className={styles.cardFooter}>
+                                <span className={styles.cardMeta}>{new Date(cat.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver cuentas</span>
+                                  <button className={styles.menuBtn}><IconDots /></button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                        <h4 className={styles.cardTitle}>{cat.nombre}</h4>
-                        <p className={styles.cardDesc}>{cat.descripcion || 'Sin descripción'}</p>
-                        <div className={styles.cardFooter}>
-                           <span className={styles.cardMeta}>{new Date(cat.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver cuentas</span>
-                              <button className={styles.menuBtn}><IconDots /></button>
-                           </div>
+                        {/* Paginación mis catálogos */}
+                        {catTotal > CAT_PAGE_SIZE && (
+                          <div className={styles.pagination}>
+                            <button className={styles.pageBtn} disabled={catPage === 0} onClick={() => setCatPage(p => p - 1)}>← Anterior</button>
+                            <span className={styles.pageInfo}>Página {catPage + 1} de {Math.ceil(catTotal / CAT_PAGE_SIZE)}</span>
+                            <button className={styles.pageBtn} disabled={(catPage + 1) * CAT_PAGE_SIZE >= catTotal} onClick={() => setCatPage(p => p + 1)}>Siguiente →</button>
+                          </div>
+                        )}
+                      </>
+                    )
+                  )}
+
+                  {/* Contenido catálogos públicos */}
+                  {catalogTab === 'publicos' && (
+                    loadingPubCats ? (
+                      <div className={styles.loadingState}>
+                        <div className={styles.spinner} style={{ width: 28, height: 28 }} />
+                      </div>
+                    ) : publicCatalogsList.length === 0 ? (
+                      <div className={styles.emptyState}>
+                        <IconList />
+                        <h3>{searchCat ? 'Sin resultados' : 'No hay catálogos públicos'}</h3>
+                        <p>{searchCat ? `No hay catálogos que coincidan con "${searchCat}"` : 'Aún no hay catálogos públicos disponibles'}</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={styles.grid}>
+                          {publicCatalogsList.map(cat => (
+                            <div key={cat.id} className={styles.card}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#E6F1FB', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#185FA5' }}>
+                                  <IconGlobe />
+                                </div>
+                                <span className={`${styles.badge} ${styles.badgePub}`}>Público</span>
+                              </div>
+                              <h4 className={styles.cardTitle}>{cat.nombre}</h4>
+                              <p className={styles.cardDesc}>{cat.descripcion || 'Sin descripción'}</p>
+                              <div style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '8px' }}>
+                                por <span style={{ fontWeight: 600, color: '#64748b' }}>{cat.autor_nombre}</span>
+                              </div>
+                              <div className={styles.cardFooter}>
+                                <span className={styles.cardMeta}>{new Date(cat.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                                <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver cuentas</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                     </div>
-                   ))}
-                </div>
+                        {/* Paginación públicos */}
+                        {pubCatTotal > CAT_PAGE_SIZE && (
+                          <div className={styles.pagination}>
+                            <button className={styles.pageBtn} disabled={pubCatPage === 0} onClick={() => setPubCatPage(p => p - 1)}>← Anterior</button>
+                            <span className={styles.pageInfo}>Página {pubCatPage + 1} de {Math.ceil(pubCatTotal / CAT_PAGE_SIZE)}</span>
+                            <button className={styles.pageBtn} disabled={(pubCatPage + 1) * CAT_PAGE_SIZE >= pubCatTotal} onClick={() => setPubCatPage(p => p + 1)}>Siguiente →</button>
+                          </div>
+                        )}
+                      </>
+                    )
+                  )}
+                </>
               )}
             </>
           )}
