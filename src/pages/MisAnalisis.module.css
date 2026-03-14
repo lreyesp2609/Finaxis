@@ -752,3 +752,109 @@
     font-size: 11px;
   }
 }
+
+
+.subTabsBar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0;
+}
+.subTabBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: all 0.15s;
+}
+.subTabBtn:hover { color: #1e293b; }
+.subTabActive {
+  color: #185FA5;
+  border-bottom-color: #185FA5;
+  font-weight: 600;
+}
+.countBadge {
+  background: #e2e8f0;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+.subTabActive .countBadge {
+  background: #E6F1FB;
+  color: #185FA5;
+}
+
+/* Buscador */
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 20px;
+}
+.searchInput {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  color: #1e293b;
+  outline: none;
+}
+.searchInput::placeholder { color: #94a3b8; }
+.clearSearch {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  padding: 0;
+}
+.clearSearch:hover { color: #475569; }
+
+/* Paginación */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+.pageBtn {
+  padding: 6px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  color: #185FA5;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.pageBtn:hover:not(:disabled) { background: #E6F1FB; border-color: #185FA5; }
+.pageBtn:disabled { color: #cbd5e1; cursor: not-allowed; }
+.pageInfo { font-size: 13px; color: #64748b; }
+
+/* Loading */
+.loadingState {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
+}
