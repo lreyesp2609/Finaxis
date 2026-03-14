@@ -244,8 +244,8 @@ export default function Dashboard() {
           <SidebarItem icon={<IconAnalisis />} label="Mis análisis" onClick={() => navigate('/dashboard/analisis')} />
 
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
-          <SidebarItem icon={<IconSalas />} label="Mis salas" />
-          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" />
+          <SidebarItem icon={<IconSalas />} label="Mis salas" onClick={() => navigate('/dashboard/salas')} />
+          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" onClick={() => navigate('/dashboard/unirse')} />
         </div>
 
         {/* Sidebar Bottom (User info) */}
@@ -358,7 +358,7 @@ export default function Dashboard() {
               title="Unirse a una sala"
               description="Ingresa un código de sala"
               isDashed={true}
-              onClick={() => {}}
+              onClick={() => navigate('/dashboard/unirse')}
             />
           </div>
 

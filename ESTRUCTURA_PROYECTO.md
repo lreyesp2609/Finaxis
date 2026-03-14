@@ -14,6 +14,8 @@ Esta guía detalla la organización del proyecto y la ubicación de los componen
 Donde residen las páginas completas de la aplicación.
 - `Dashboard.tsx`: Panel principal con sidebar y navegación de salas.
 - `MisAnalisis.tsx`: Gestión de estados financieros y catálogos (usa pestañas e inline forms).
+- `MisSalas.tsx`: Gestión de salas de colaboración creadas por el usuario.
+- `UnirseSala.tsx`: Interfaz para unirse a salas existentes mediante código (layout optimizado).
 - `Login.tsx` / `Register.tsx`: Flujos de autenticación (optimizados con replace y popups).
 - `AuthCallback.tsx`: Manejador de retorno de OAuth (Google).
 
@@ -36,11 +38,11 @@ Imágenes, logos y recursos estáticos.
 ### 1. Autenticación (Login/Registro)
 Ubicado en `pages/Login.tsx` y `pages/Register.tsx`. Utiliza `window.location.replace()` para limpiar el historial y `BroadcastChannel` para la comunicación con el popup de Google.
 
-### 2. Gestión de Análisis
-Ubicado en `pages/MisAnalisis.tsx`.
-- **Tabs**: Cambia entre 'estados' y 'catalogos'.
-- **Inline Forms**: Los formularios de creación reemplazan la lista de tarjetas para evitar distracciones.
-- **Estado Local**: Actualmente utiliza mocks y `useState` para demostrar la funcionalidad antes de la integración final con Supabase.
+### 3. Salas de Colaboración
+Ubicado en `pages/MisSalas.tsx` y `pages/UnirseSala.tsx`.
+- **Mis Salas**: Permite crear salas con configuraciones de tiempo, fechas y catálogo específico. Genera códigos únicos `FIN-XXXX`.
+- **Unirse a Sala**: Validación de códigos en tiempo real. Incluye restricción para que el creador no pueda unirse a su propia sala.
+- **Back Button**: Ambas páginas incluyen lógica de bloqueo del botón atrás para mantener la integridad de la sesión.
 
 ## 📝 Convenciones de Código
 - **Estilos**: Se prefiere CSS Modules (`.module.css`) para componentes complejos para evitar colisiones.
