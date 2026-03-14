@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Info file
-INFO.txt
+# INFO.txt
 
 # Environment variables
 .env
