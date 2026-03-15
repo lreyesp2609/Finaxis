@@ -1,20 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 /* ── Icons ─────────────────────────────────────── */
-function IconInicio({ isActive }: { isActive?: boolean }) {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={isActive ? "#185FA5" : "currentColor"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" />
-      <rect x="14" y="3" width="7" height="7" />
-      <rect x="14" y="14" width="7" height="7" />
-      <rect x="3" y="14" width="7" height="7" />
-    </svg>
-  );
-}
-
 function IconAnalisis() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -55,75 +44,10 @@ function IconPlus() {
   );
 }
 
-function IconLogout() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-      <polyline points="16 17 21 12 16 7" />
-      <line x1="21" y1="12" x2="9" y2="12" />
-    </svg>
-  );
-}
-
-function IconMenu() {
-  return (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="18" x2="21" y2="18" />
-    </svg>
-  );
-}
-
-function IconX({ size = 18 }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
+/* ── Dashboard Components ─────────────────────── */
 
 
-/* ── Sidebar Item Component ────────────────────── */
-interface SidebarItemProps {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-}
-
-function SidebarItem({ icon, label, active, onClick }: SidebarItemProps & { onClick?: () => void }) {
-  return (
-    <div 
-      onClick={onClick}
-      style={{
-        display: 'flex',
-      alignItems: 'center',
-      gap: '12px',
-      padding: '8px 12px',
-      borderRadius: '8px',
-      fontSize: '14px',
-      fontWeight: 500,
-      cursor: 'pointer',
-      backgroundColor: active ? '#E6F1FB' : 'transparent',
-      color: active ? '#185FA5' : '#64748b',
-      transition: 'all 0.2s',
-      marginBottom: '2px'
-    }}
-    onMouseEnter={e => {
-      if (!active) {
-        e.currentTarget.style.backgroundColor = '#f3f4f6';
-        e.currentTarget.style.color = '#1e293b';
-      }
-    }}
-    onMouseLeave={e => {
-      if (!active) {
-        e.currentTarget.style.backgroundColor = 'transparent';
-        e.currentTarget.style.color = '#64748b';
-      }
-    }}>
-      {icon}
-      <span>{label}</span>
-    </div>
-  );
-}
+/* ── Quick Action Card ────────────────────────── */
 
 /* ── Main content components ───────────────────── */
 function QuickActionCard({ icon, title, description, isDashed, onClick }: any) {
@@ -173,311 +97,129 @@ function QuickActionCard({ icon, title, description, isDashed, onClick }: any) {
 }
 
 /* ── Dashboard Component ────────────────────────── */
-export default function Dashboard() {
-  const { user, signOut } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [nombrePersona, setNombrePersona] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+const mockEmpresas = [
+  {
+    id: 1,
+    nombre: 'Banco de Desarrollo del Ecuador',
+    tipo: 'Financiera' as const,
+    estados: [
+      { id: 1, nombre: 'Balance General', periodo: '2025', fecha: '31/12/2025' },
+      { id: 2, nombre: 'Estado de P&G', periodo: '2025', fecha: '31/12/2025' },
+    ]
+  },
+  {
+    id: 2,
+    nombre: 'Comercial Los Andes S.A.',
+    tipo: 'Comercial' as const,
+    estados: [
+      { id: 4, nombre: 'Balance General', periodo: '2024', fecha: '31/12/2024' },
+    ]
+  }
+];
 
+function SummaryCard({ label, value, icon }: { label: string, value: string, icon: React.ReactNode }) {
+  return (
+    <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '24px', flex: 1, display: 'flex', alignItems: 'center', gap: '16px' }}>
+      <div style={{ width: '48px', height: '48px', backgroundColor: '#E6F1FB', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#185FA5' }}>
+        {icon}
+      </div>
+      <div>
+        <div style={{ fontSize: '13px', color: '#64748b', fontWeight: 500 }}>{label}</div>
+        <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a' }}>{value}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Dashboard Component ────────────────────────── */
+export default function Dashboard() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [nombrePersona, setNombrePersona] = useState('');
 
   useEffect(() => {
     async function getPersona() {
       if (!user) return;
       try {
-        const { data } = await supabase
-          .from('personas')
-          .select('nombre')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (data) setNombrePersona(data.nombre);
-      } catch (err) {
-        console.error('Error fetching persona:', err);
-      } finally {
-        setLoading(false);
-      }
+        const { data } = await supabase.from('personas').select('nombre').eq('id', user.id).maybeSingle();
+        if (data) setNombrePersona(data.nombre || '');
+      } catch (err) { console.error(err); }
     }
     getPersona();
   }, [user]);
 
-  useEffect(() => {
-    window.history.pushState(null, document.title, window.location.href)
-    const handlePopState = () => {
-      window.history.pushState(null, document.title, window.location.href)
-    }
-    window.addEventListener('popstate', handlePopState)
-    return () => {
-      window.removeEventListener('popstate', handlePopState)
-    }
-  }, []);
-
-  const handleLogout = async () => {
-    await signOut();
-    window.location.replace('/login');
-  };
-
-  if (loading) {
-    return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '32px', height: '32px', border: '3px solid #e5e7eb', borderTopColor: '#185FA5', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
-  }
-
-  const initials = nombrePersona ? nombrePersona.charAt(0).toUpperCase() : '?';
-
   return (
-    <div className="dashboard-page">
+    <>
       <style>{`
-        .dashboard-page {
-          display: flex;
-          height: 100vh;
-          background-color: #ffffff;
-          font-family: system-ui, -apple-system, sans-serif;
-          color: #1e293b;
-          overflow: hidden;
-        }
-        .main-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          min-width: 0;
-          overflow-y: auto;
-          padding: 2rem;
-        }
-        .sidebar {
-          width: 220px;
-          background-color: #f8fafc;
-          border-right: 1px solid #e5e7eb;
-          display: flex;
-          flex-direction: column;
-          padding: 24px 16px;
-          transition: transform 0.3s ease;
-        }
-        .hamburger {
-          display: none;
-          position: fixed;
-          top: 1rem;
-          left: 1rem;
-          z-index: 50;
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 8px;
-          padding: 8px;
-          cursor: pointer;
-        }
-        .sidebar-overlay {
-          display: none;
-          position: fixed;
-          inset: 0;
-          background: rgba(0,0,0,0.3);
-          backdrop-filter: blur(2px);
-          z-index: 90;
-        }
-        .close-sidebar {
-          display: none;
-          background: transparent;
-          border: none;
-          color: #64748b;
-          cursor: pointer;
-        }
+        .grid-summary { display: flex; gap: 1.5rem; margin-bottom: 2.5rem; }
+        .grid-actions { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; margin-bottom: 3rem; }
         @media (max-width: 768px) {
-          .sidebar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            z-index: 100;
-            transform: translateX(-100%);
-            box-shadow: 2px 0 8px rgba(0,0,0,0.1);
-          }
-          .sidebar-open {
-            transform: translateX(0);
-          }
-          .hamburger {
-            display: block;
-          }
-          .sidebar-overlay {
-            display: block;
-          }
-          .close-sidebar {
-            display: block;
-          }
-          .main-content {
-            padding: 4rem 1.5rem 1.5rem 1.5rem;
-          }
-          .top-bar-flex {
-            flex-direction: column;
-            align-items: flex-start !important;
-            gap: 0.75rem;
-          }
-          .grid-responsive {
-            grid-template-columns: 1fr !important;
-          }
-        }
-        @media (max-width: 480px) {
-          .main-content {
-            padding: 4rem 1rem 1rem 1rem;
-          }
+          .grid-summary { flex-direction: column; }
+          .grid-actions { grid-template-columns: 1fr; }
         }
       `}</style>
 
-      {/* Botón Hamburguesa Móvil */}
-      <button className="hamburger" onClick={() => setIsSidebarOpen(true)}>
-        <IconMenu />
-      </button>
-
-      {/* Overlay para cerrar sidebar en móvil */}
-      {isSidebarOpen && <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)} />}
-
-      <aside className={`sidebar ${isSidebarOpen ? 'sidebar-open' : ''}`}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px', paddingLeft: '4px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <div style={{ width: '24px', height: '24px', backgroundColor: '#185FA5', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="white"><polygon points="3,13 8,3 13,13" /></svg>
-            </div>
-            <span style={{ fontSize: '18px', fontWeight: 800, color: '#1e293b', letterSpacing: '-0.02em' }}>Finaxis</span>
-          </div>
-          <button className="close-sidebar" onClick={() => setIsSidebarOpen(false)}>
-            <IconX size={20} />
-          </button>
-        </div>
-        
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', marginBottom: '12px', paddingLeft: '12px' }}>GENERAL</div>
-          <SidebarItem icon={<IconInicio isActive={location.pathname === '/dashboard'} />} label="Inicio" active={location.pathname === '/dashboard'} onClick={() => { navigate('/dashboard'); setIsSidebarOpen(false); }} />
-          <SidebarItem icon={<IconAnalisis />} label="Mis análisis" active={location.pathname === '/dashboard/analisis'} onClick={() => { navigate('/dashboard/analisis'); setIsSidebarOpen(false); }} />
-
-          <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
-          <SidebarItem icon={<IconSalas />} label="Mis salas" active={location.pathname === '/dashboard/salas'} onClick={() => { navigate('/dashboard/salas'); setIsSidebarOpen(false); }} />
-          <SidebarItem icon={<IconUnirse />} label="Unirse a sala" active={location.pathname === '/dashboard/unirse'} onClick={() => { navigate('/dashboard/unirse'); setIsSidebarOpen(false); }} />
-        </div>
-
-        {/* Sidebar Bottom (User info) */}
-        <div style={{ 
-          marginTop: 'auto',
-          paddingTop: '16px',
-          borderTop: '1px solid #e2e8f0',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px'
-        }}>
-          <div style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            backgroundColor: '#185FA5',
-            color: 'white',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '13px',
-            fontWeight: 600
-          }}>
-            {initials}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: '13px', fontWeight: 600, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {nombrePersona || 'Usuario'}
-            </div>
-            <div style={{ fontSize: '11px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {user?.email}
-            </div>
-          </div>
-          <button 
-            onClick={handleLogout}
-            style={{
-              padding: '6px',
-              borderRadius: '6px',
-              border: 'none',
-              backgroundColor: 'transparent',
-              color: '#d1d5db',
-              cursor: 'pointer',
-              display: 'flex'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = '#fee2e2';
-              e.currentTarget.style.color = '#ef4444';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-              e.currentTarget.style.color = '#d1d5db';
-            }}
-          >
-            <IconLogout />
-          </button>
-        </div>
-      </aside>
-
-      {/* MAIN CONTENT */}
-      <div className="main-content">
-        <header style={{
-          height: '64px',
-          padding: '0 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid #f1f5f9',
-          marginBottom: '2rem'
-        }} className="top-bar-flex">
-          <div>
-            <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600 }}>¡Hola, {nombrePersona || 'Usuario'}! 👋</h2>
-            <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>Bienvenido a tu panel de control financiero.</p>
-          </div>
-          <button 
-            onClick={() => navigate('/dashboard/analisis')}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: '#185FA5', color: 'white',
-              border: 'none', padding: '10px 18px', borderRadius: '10px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-              boxShadow: '0 4px 6px -1px rgba(24, 95, 165, 0.2)', transition: 'all 0.2s'
-            }}
-            onMouseEnter={e => e.currentTarget.style.backgroundColor = '#14508a'}
-            onMouseLeave={e => e.currentTarget.style.backgroundColor = '#185FA5'}
-          >
-            <IconPlus />
-            Nuevo Análisis
-          </button>
+      <div className="dashboard-content">
+        <header style={{ marginBottom: '2rem' }}>
+          <h2 style={{ margin: 0, fontSize: '24px', fontWeight: 700, color: '#0f172a' }}>Bienvenido de nuevo, {nombrePersona.split(' ')[0]} 👋</h2>
+          <p style={{ margin: '4px 0 0 0', fontSize: '14px', color: '#64748b' }}>Esto es lo que está pasando en tu panel hoy.</p>
         </header>
 
-        <main style={{ flex: 1 }}>
-          <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1.5rem', marginBottom: '2.5rem' }}>
-            <QuickActionCard 
-              icon={<IconPlus />} 
-              title="Crear un nuevo análisis" 
-              description="Sube estados financieros en PDF y genera análisis vertical, horizontal y ratios."
-              onClick={() => navigate('/dashboard/analisis')}
-            />
-            <QuickActionCard 
-              icon={<IconUnirse />} 
-              title="Unirse a una sala" 
-              description="Usa un código compartido para participar en una sala de colaboración."
-              isDashed={true}
-              onClick={() => navigate('/dashboard/unirse')}
-            />
-          </div>
+        <div className="grid-summary">
+          <SummaryCard label="Empresas" value="2" icon={<IconEmpresas />} />
+          <SummaryCard label="Análisis" value="4" icon={<IconAnalisis />} />
+          <SummaryCard label="Sala activa" value="1" icon={<IconSalas />} />
+        </div>
 
-          <div style={{ marginBottom: '12px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em' }}>MIS SALAS RECIENTES</span>
-          </div>
+        <div style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', marginBottom: '16px', letterSpacing: '0.05em' }}>ACCIONES RÁPIDAS</div>
+        <div className="grid-actions">
+          <QuickActionCard 
+            icon={<IconPlus />} 
+            title="Nueva empresa" 
+            description="Registra una empresa para comenzar a analizar sus estados financieros."
+            onClick={() => navigate('/dashboard/analisis', { state: { openModal: true } })}
+          />
+          <QuickActionCard 
+            icon={<IconUnirse />} 
+            title="Unirse a sala" 
+            description="Usa un código compartido para colaborar en análisis en tiempo real."
+            isDashed={true}
+            onClick={() => navigate('/dashboard/unirse')}
+          />
+        </div>
 
-          <div style={{ 
-            border: '1px solid #f1f5f9',
-            borderRadius: '12px',
-            padding: '40px 20px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: '#fafafa'
-          }}>
-            <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px' }}>Aún no has creado ninguna sala. Crea una para empezar.</p>
-          </div>
-        </main>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <span style={{ fontSize: '12px', fontWeight: 700, color: '#64748b', letterSpacing: '0.05em' }}>MIS EMPRESAS RECIENTES</span>
+          <span onClick={() => navigate('/dashboard/analisis')} style={{ fontSize: '13px', color: '#185FA5', fontWeight: 600, cursor: 'pointer' }}>Ver todas →</span>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '16px' }}>
+          {mockEmpresas.map(emp => (
+            <div key={emp.id} style={{ backgroundColor: 'white', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', cursor: 'pointer' }} onClick={() => navigate('/dashboard/analisis')}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+                <div style={{ width: '40px', height: '40px', backgroundColor: '#f1f5f9', borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                  {emp.tipo === 'Financiera' ? '🏦' : '🏪'}
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600 }}>{emp.nombre}</h4>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: emp.tipo === 'Financiera' ? '#185FA5' : '#b45309', backgroundColor: emp.tipo === 'Financiera' ? '#E6F1FB' : '#fff7ed', padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>{emp.tipo}</span>
+                </div>
+              </div>
+              <div style={{ fontSize: '13px', color: '#64748b' }}>{emp.estados.length} estados financieros registrados</div>
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
+  );
+}
+
+function IconEmpresas() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 21h18" /><path d="M3 7v1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7m0 1a3 3 0 0 0 6 0V7H3" />
+      <path d="M5 21V10.12" /><path d="M19 21V10.12" /><path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
+    </svg>
   );
 }
 
