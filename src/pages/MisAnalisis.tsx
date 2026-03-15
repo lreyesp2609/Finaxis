@@ -712,7 +712,12 @@ export default function MisAnalisis() {
                               <div className={styles.cardFooter}>
                                 <span className={styles.cardMeta}>{new Date(cat.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                  <span style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Ver cuentas</span>
+                                  <span
+                                    style={{ color: '#185FA5', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+                                    onClick={() => navigate(`/dashboard/catalogos/${cat.id}`)}
+                                  >
+                                    Editar
+                                  </span>
                                   <button className={styles.menuBtn}><IconDots /></button>
                                 </div>
                               </div>
