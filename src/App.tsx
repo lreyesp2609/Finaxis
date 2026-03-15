@@ -9,6 +9,7 @@ import MisAnalisis from './pages/MisAnalisis';
 import MisSalas from './pages/MisSalas';
 import UnirseSala from './pages/UnirseSala';
 import AuthCallback from './pages/AuthCallback';
+import EditarCatalogo from './pages/EditarCatalogo';
 
 export default function App() {
   return (
@@ -30,6 +31,7 @@ export default function App() {
           <Route path="/dashboard/analisis" element={<ProtectedRoute><MisAnalisis /></ProtectedRoute>} />
           <Route path="/dashboard/salas" element={<ProtectedRoute><MisSalas /></ProtectedRoute>} />
           <Route path="/dashboard/unirse" element={<ProtectedRoute><UnirseSala /></ProtectedRoute>} />
+          <Route path="/dashboard/catalogos/:id" element={<ProtectedRoute><EditarCatalogo /></ProtectedRoute>} />  {/* 👈 nuevo */}
 
           {/* Catch-all */}
           <Route path="*" element={<Navigate to="/login" replace />} />
