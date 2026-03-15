@@ -203,6 +203,11 @@ export default function MisAnalisis() {
   const [formCatPublic, setFormCatPublic] = useState(false);
   const [isCreatingCat, setIsCreatingCat] = useState(false);
 
+  // PDF Extraction States
+  const [extracting, setExtracting] = useState(false);
+  const [extractedItems, setExtractedItems] = useState<any[]>([]);
+  const [extractError, setExtractError] = useState('');
+
   // Search
   const [searchPicker, setSearchPicker] = useState('');
 
@@ -331,6 +336,27 @@ export default function MisAnalisis() {
     setFormAnCatalog(null);
     showToast('✓ Estado financiero creado');
   };
+
+  const handleCatFileChange = async (file: File) => {
+    setFormCatFile(file);
+    setExtractError('');
+    setExtractedItems([]);
+
+    if (file.type === 'application/pdf') {
+      setExtracting(true);
+      try {
+        const { extractCatalogFromPDF } = await import('../lib/pdfExtractor');
+        const items = await extractCatalogFromPDF(file);
+        setExtractedItems(items);
+      } catch (err) {
+        console.error(err);
+        setExtractError('No se pudo extraer el texto del PDF. Puedes agregar las cuentas manualmente.');
+      } finally {
+        setExtracting(false);
+      }
+    }
+  };
+
   //Nuevo crear catalogo
   const createCatalog = async () => {
     if (!formCatNombre) return;
@@ -351,13 +377,68 @@ export default function MisAnalisis() {
 
     const nuevo = data[0]; // La función retorna un array de filas
 
-    const newCat = {
-      id: nuevo.id.toString(),
-      nombre: nuevo.nombre,
-      descripcion: nuevo.descripcion,
-      tipo: nuevo.publico ? 'public' : 'private',
-      created_at: nuevo.created_at,
-    };
+    // Inserción de ítems extraídos con resolución de jerarquía
+    if (extractedItems.length > 0) {
+      console.log('Extracted items count:', extractedItems.length);
+      console.log('Extracted items:', JSON.stringify(extractedItems, null, 2));
+
+      try {
+        const catalogoId = parseInt(nuevo.id);
+        
+        // Build a map: codigo → db_id for resolving parents
+        const codeToId = new Map<string, number>();
+        // Also track index → db_id for items without codes (optional for logging)
+        const indexToId = new Map<number, number>();
+        
+        // Sort items by nivel ascending so parents are inserted before children
+        const sorted = [...extractedItems].sort((a, b) => a.nivel - b.nivel);
+        
+        for (let i = 0; i < sorted.length; i++) {
+          const item = sorted[i];
+          
+          // Resolve parent ID
+          let parentId: number | null = null;
+          
+          if (item.iditempadre_codigo) {
+            // Has a parent code - look it up
+            parentId = codeToId.get(item.iditempadre_codigo) ?? null;
+          }
+          // If no parent code found, insert as root (parentId = null)
+          
+          try {
+            const { data: res, error: e } = await supabase
+              .from('itemcat')
+              .insert({
+                idcatalogo: catalogoId,
+                nombre: item.nombre,
+                codigo: item.codigo || null,
+                contenedor: item.contenedor,
+                iditempadre: parentId,
+              })
+              .select('id')
+              .single();
+            
+            console.log('Insert result:', JSON.stringify(res), 'Error:', JSON.stringify(e));
+
+            if (res) {
+              // Register in both maps
+              if (item.codigo) {
+                codeToId.set(item.codigo, res.id);
+              }
+              indexToId.set(i, res.id);
+            }
+            
+            if (e) {
+              console.error('Error inserting item:', item.nombre, e);
+            }
+          } catch (err) {
+            console.error('Exception inserting item:', item.nombre, err);
+          }
+        }
+      } catch (err) {
+        console.error('Error inserting items:', err);
+      }
+    }
 
     await loadMisCatalogos(0, searchCat);
     setCatPage(0);
@@ -366,9 +447,8 @@ export default function MisAnalisis() {
     setFormCatNombre('');
     setFormCatDesc('');
     setFormCatFile(null);
-    showToast('✓ Catálogo creado');
-
-
+    setExtractedItems([]);
+    showToast(`✓ Catálogo creado con ${extractedItems.length > 0 ? extractedItems.length + ' cuentas' : 'éxito'}`);
   };
 
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -632,7 +712,46 @@ export default function MisAnalisis() {
                       <button className={styles.outlineBtn} onClick={() => catFileInputRef.current?.click()}>
                         <IconAttachment /> {formCatFile ? formCatFile.name : 'Subir PDF del catálogo'}
                       </button>
-                      <input type="file" ref={catFileInputRef} hidden accept=".pdf" onChange={e => setFormCatFile(e.target.files?.[0] || null)} />
+                      <input type="file" ref={catFileInputRef} hidden accept=".pdf" onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) handleCatFileChange(file);
+                      }} />
+
+                      {extracting && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          fontSize: 13, color: '#64748b', padding: '8px 0'
+                        }}>
+                          <div className={styles.spinner} style={{
+                            borderColor: '#e2e8f0', borderTopColor: '#185FA5',
+                            width: 14, height: 14
+                          }} />
+                          Extrayendo cuentas del PDF...
+                        </div>
+                      )}
+
+                      {extractedItems.length > 0 && !extracting && (
+                        <div style={{
+                          background: '#f0fdf4', border: '1px solid #bbf7d0',
+                          borderRadius: 8, padding: '10px 14px', marginTop: 8
+                        }}>
+                          <p style={{
+                            margin: '0 0 4px', fontSize: 13,
+                            fontWeight: 600, color: '#166534'
+                          }}>
+                            <IconCheck color="#166534" /> Se encontraron {extractedItems.length} cuentas en el PDF
+                          </p>
+                          <p style={{ margin: 0, fontSize: 12, color: '#16a34a' }}>
+                            Se agregarán automáticamente al crear el catálogo
+                          </p>
+                        </div>
+                      )}
+
+                      {extractError && (
+                        <p style={{ fontSize: 12, color: '#ef4444', margin: '4px 0 0' }}>
+                          {extractError}
+                        </p>
+                      )}
                     </div>
                     <div className={styles.formGroup}>
                       <label className={styles.label}>Visibilidad</label>
