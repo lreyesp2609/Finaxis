@@ -165,6 +165,7 @@ export default function Catalogos() {
     setShowCatalogForm(false);
     setFormCatNombre(''); setFormCatDesc(''); setFormCatFile(null); setExtractedItems([]);
     showToast(`✓ Catálogo creado con éxito`);
+
   };
 
   const showToast = (msg: string) => {
@@ -387,7 +388,7 @@ export default function Catalogos() {
               </div>
               <div className="cat-form-footer">
                 <button className="cat-secondary-btn" onClick={() => setShowCatalogForm(false)}>Cancelar</button>
-                <button className="cat-primary-btn" disabled={!formCatNombre || isCreatingCat} onClick={createCatalog}>
+                <button className="cat-primary-btn" disabled={!formCatNombre || isCreatingCat || extracting} onClick={createCatalog}>
                   {isCreatingCat ? 'Creando...' : 'Crear catálogo'}
                 </button>
               </div>

@@ -40,8 +40,72 @@ function IconEdit({ size = 14 }: { size?: number }) { return <svg width={size} h
 function IconPlus({ size = 15 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>; }
 function IconCheck({ size = 14 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>; }
 function IconSave({ size = 15 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>; }
+function IconDrag({ size = 14 }: { size?: number }) { return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="9" cy="19" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="15" cy="19" r="1" fill="currentColor" stroke="none"/></svg>; }
 
+/* ── Drag state (module-level ref, no re-renders) ── */
+const dragState = {
+  draggedId: null as number | null,
+};
 
+/* ── Tree helpers ── */
+function buildTree(items: ItemCat[]): ItemCat[] {
+  const map = new Map<number, ItemCat>();
+  items.forEach(i => map.set(i.id, { ...i, children: [] }));
+  const roots: ItemCat[] = [];
+  map.forEach(item => {
+    if (item.iditempadre === null) roots.push(item);
+    else { const p = map.get(item.iditempadre); if (p) p.children!.push(item); else roots.push(item); }
+  });
+  return roots;
+}
+
+function flattenTree(nodes: ItemCat[]): ItemCat[] {
+  const result: ItemCat[] = [];
+  function walk(n: ItemCat) { result.push(n); n.children?.forEach(walk); }
+  nodes.forEach(walk);
+  return result;
+}
+
+/** Remove an item (by id) from the tree, return [newTree, removedItem] */
+function removeFromTree(nodes: ItemCat[], id: number): [ItemCat[], ItemCat | null] {
+  let removed: ItemCat | null = null;
+  function walk(list: ItemCat[]): ItemCat[] {
+    return list.reduce<ItemCat[]>((acc, n) => {
+      if (n.id === id) { removed = n; return acc; }
+      const newChildren = n.children ? walk(n.children) : [];
+      acc.push({ ...n, children: newChildren });
+      return acc;
+    }, []);
+  }
+  return [walk(nodes), removed];
+}
+
+/** Insert item as last child of parentId (or root if parentId === null) */
+function insertIntoParent(nodes: ItemCat[], item: ItemCat, parentId: number | null): ItemCat[] {
+  if (parentId === null) return [...nodes, item];
+  return nodes.map(n => {
+    if (n.id === parentId) return { ...n, children: [...(n.children ?? []), item] };
+    return { ...n, children: n.children ? insertIntoParent(n.children, item, parentId) : [] };
+  });
+}
+
+/** Check if targetId is a descendant of nodeId (to prevent circular moves) */
+function isDescendant(nodes: ItemCat[], nodeId: number, targetId: number): boolean {
+  function find(list: ItemCat[], lookingFor: number): ItemCat | null {
+    for (const n of list) {
+      if (n.id === lookingFor) return n;
+      const r = find(n.children ?? [], lookingFor);
+      if (r) return r;
+    }
+    return null;
+  }
+  const node = find(nodes, nodeId);
+  if (!node) return false;
+  function hasDesc(n: ItemCat, tid: number): boolean {
+    return (n.children ?? []).some(c => c.id === tid || hasDesc(c, tid));
+  }
+  return hasDesc(node, targetId);
+}
 
 /* ── Add item inline form ── */
 function AddItemForm({ onAdd, onCancel, isGroup }: {
@@ -70,25 +134,100 @@ function AddItemForm({ onAdd, onCancel, isGroup }: {
 }
 
 /* ── Tree node ── */
-function TreeNode({ item, depth = 0, editMode, catalogoEnUso, onUpdateItem, onAddChild, onDeleteItem }: {
+function TreeNode({
+  item, depth = 0, editMode, catalogoEnUso,
+  onUpdateItem, onAddChild, onDeleteItem, onMoveItem,
+  treeItems,
+}: {
   item: ItemCat; depth?: number; editMode: boolean; catalogoEnUso: boolean;
   onUpdateItem: (id: number, fields: Partial<ItemCat>) => void;
   onAddChild: (parentId: number | null, nombre: string, codigo: string, isGroup: boolean) => void;
   onDeleteItem: (id: number) => void;
+  onMoveItem: (draggedId: number, newParentId: number | null) => void;
+  treeItems: ItemCat[];
 }) {
   const [open, setOpen] = useState(true);
   const [addingItem, setAddingItem] = useState(false);
   const [addingGroup, setAddingGroup] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragOverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const hasChildren = item.children && item.children.filter(c => !c._deleted).length > 0;
   const showAddForms = addingItem || addingGroup;
   const canDelete = !catalogoEnUso || item._new;
 
+  /* Drag source */
+  const handleDragStart = (e: React.DragEvent) => {
+    if (!editMode) return;
+    dragState.draggedId = item.id;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(item.id));
+    (e.currentTarget as HTMLElement).style.opacity = '0.4';
+  };
+
+  const handleDragEnd = (e: React.DragEvent) => {
+    dragState.draggedId = null;
+    (e.currentTarget as HTMLElement).style.opacity = '1';
+  };
+
+  /* Drop target (only groups can receive children) */
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!editMode || !item.contenedor) return;
+    const draggedId = dragState.draggedId;
+    if (draggedId === null || draggedId === item.id) return;
+    // Prevent dropping an ancestor into its own descendant
+    if (isDescendant(treeItems, draggedId, item.id)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+    // Auto-open folder on hover
+    if (dragOverTimer.current) clearTimeout(dragOverTimer.current);
+    dragOverTimer.current = setTimeout(() => setOpen(true), 500);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    if (dragOverTimer.current) clearTimeout(dragOverTimer.current);
+    setIsDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (dragOverTimer.current) clearTimeout(dragOverTimer.current);
+    setIsDragOver(false);
+    const draggedId = dragState.draggedId;
+    if (draggedId === null || draggedId === item.id) return;
+    if (!item.contenedor) return;
+    if (isDescendant(treeItems, draggedId, item.id)) return;
+    onMoveItem(draggedId, item.id);
+    setOpen(true);
+  };
+
   return (
     <div>
       <div
-        className={`${styles.treeRow} ${item._dirty ? styles.treeRowDirty : ''} ${item._new ? styles.treeRowNew : ''}`}
+        className={[
+          styles.treeRow,
+          item._dirty ? styles.treeRowDirty : '',
+          item._new ? styles.treeRowNew : '',
+          isDragOver ? styles.treeRowDropTarget : '',
+        ].filter(Boolean).join(' ')}
         style={{ paddingLeft: `${16 + depth * 24}px` }}
+        draggable={editMode}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
+        {editMode && (
+          <span className={styles.dragHandle} title="Arrastrar">
+            <IconDrag size={13} />
+          </span>
+        )}
+
         <span className={styles.treeToggle} onClick={() => (hasChildren || showAddForms) && setOpen(o => !o)}>
           {item.contenedor
             ? <IconChevron open={open} />
@@ -166,6 +305,8 @@ function TreeNode({ item, depth = 0, editMode, catalogoEnUso, onUpdateItem, onAd
               onUpdateItem={onUpdateItem}
               onAddChild={onAddChild}
               onDeleteItem={onDeleteItem}
+              onMoveItem={onMoveItem}
+              treeItems={treeItems}
             />
           ))}
           {addingItem && (
@@ -186,25 +327,6 @@ function TreeNode({ item, depth = 0, editMode, catalogoEnUso, onUpdateItem, onAd
       )}
     </div>
   );
-}
-
-/* ── Build / flatten tree ── */
-function buildTree(items: ItemCat[]): ItemCat[] {
-  const map = new Map<number, ItemCat>();
-  items.forEach(i => map.set(i.id, { ...i, children: [] }));
-  const roots: ItemCat[] = [];
-  map.forEach(item => {
-    if (item.iditempadre === null) roots.push(item);
-    else { const p = map.get(item.iditempadre); if (p) p.children!.push(item); else roots.push(item); }
-  });
-  return roots;
-}
-
-function flattenTree(nodes: ItemCat[]): ItemCat[] {
-  const result: ItemCat[] = [];
-  function walk(n: ItemCat) { result.push(n); n.children?.forEach(walk); }
-  nodes.forEach(walk);
-  return result;
 }
 
 /* ── Main ── */
@@ -229,6 +351,9 @@ export default function EditarCatalogo() {
 
   const [addingRootItem, setAddingRootItem] = useState(false);
   const [addingRootGroup, setAddingRootGroup] = useState(false);
+
+  // Drop zone state for root-level drops
+  const [rootDropActive, setRootDropActive] = useState(false);
 
   const tempIdRef = useRef(-1);
   const isOwner = catalogo?.user === user?.id;
@@ -296,8 +421,13 @@ export default function EditarCatalogo() {
     const flatItems = flattenTree(treeItems);
 
     const itemsEdit = flatItems
-      .filter(i => i._dirty && !i._new && !i._deleted)
-      .map(i => ({ id: i.id, nombre: i.nombre, codigo: i.codigo ?? '' }));
+  .filter(i => i._dirty && !i._new && !i._deleted)
+  .map(i => ({
+    id: i.id,
+    nombre: i.nombre,
+    codigo: i.codigo ?? '',
+    iditempadre: i.iditempadre !== null ? String(i.iditempadre) : null, 
+  }));
 
     const itemsNew = flatItems
       .filter(i => i._new && !i._deleted)
@@ -356,10 +486,10 @@ export default function EditarCatalogo() {
 
   /* ── Eliminar ítem ── */
   const handleDeleteItem = (itemId: number) => {
-    function removeFromTree(nodes: ItemCat[]): ItemCat[] {
+    function removeNode(nodes: ItemCat[]): ItemCat[] {
       return nodes
         .filter(n => n.id !== itemId)
-        .map(n => ({ ...n, children: n.children ? removeFromTree(n.children) : [] }));
+        .map(n => ({ ...n, children: n.children ? removeNode(n.children) : [] }));
     }
     function markDeleted(nodes: ItemCat[]): ItemCat[] {
       return nodes.map(n => n.id === itemId
@@ -371,7 +501,7 @@ export default function EditarCatalogo() {
     const target = flat.find(i => i.id === itemId);
 
     if (target?._new) {
-      setTreeItems(prev => removeFromTree(prev));
+      setTreeItems(prev => removeNode(prev));
     } else {
       setTreeItems(prev => markDeleted(prev));
     }
@@ -403,6 +533,50 @@ export default function EditarCatalogo() {
     setTotalItems(prev => prev + 1);
   };
 
+  /* ── Mover ítem (drag & drop) ── */
+  const handleMoveItem = (draggedId: number, newParentId: number | null) => {
+    setTreeItems(prev => {
+      // Remove dragged item from wherever it is
+      const [treeWithout, removed] = removeFromTree(prev, draggedId);
+      if (!removed) return prev;
+
+      // Update iditempadre and mark as dirty (unless it's new)
+      const updatedItem: ItemCat = {
+        ...removed,
+        iditempadre: newParentId,
+        _dirty: !removed._new ? true : removed._dirty,
+      };
+
+      // Insert into new parent
+      return insertIntoParent(treeWithout, updatedItem, newParentId);
+    });
+  };
+
+  /* ── Root drop zone handlers ── */
+  const handleRootDragOver = (e: React.DragEvent) => {
+    if (!editMode) return;
+    const draggedId = dragState.draggedId;
+    if (draggedId === null) return;
+    // Only show root drop if item is NOT already at root
+    const flat = flattenTree(treeItems);
+    const dragged = flat.find(i => i.id === draggedId);
+    if (!dragged || dragged.iditempadre === null) return;
+    e.preventDefault();
+    setRootDropActive(true);
+  };
+
+  const handleRootDragLeave = () => {
+    setRootDropActive(false);
+  };
+
+  const handleRootDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setRootDropActive(false);
+    const draggedId = dragState.draggedId;
+    if (draggedId === null) return;
+    handleMoveItem(draggedId, null);
+  };
+
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
       <div className={styles.spinnerLg} />
@@ -411,198 +585,214 @@ export default function EditarCatalogo() {
 
   return (
     <>
-        <div className={styles.pageHeader}>
-          <button className={styles.backBtn} onClick={() => navigate('/dashboard/catalogos')}>
-            <IconBack /> Volver a catálogos
-          </button>
-        </div>
+      <div className={styles.pageHeader}>
+        <button className={styles.backBtn} onClick={() => navigate('/dashboard/catalogos')}>
+          <IconBack /> Volver a catálogos
+        </button>
+      </div>
 
-        <div className={styles.contentArea}>
-          {error ? (
-            <div className={styles.errorState}>
-              <p>{error}</p>
-              <button className={styles.primaryBtn} onClick={() => navigate('/dashboard/catalogos')}>Volver</button>
-            </div>
-          ) : catalogo && (
-            <>
-              {/* Banner edición */}
-              {editMode && (
-                <div className={styles.editBanner}>
-                  <span className={styles.editBannerDot} />
-                  <span>
-                    Modo edición activo — los cambios no se guardan hasta presionar <strong>Guardar</strong>
-                    {catalogoEnUso && (
-                      <span style={{ marginLeft: 8, fontWeight: 600 }}>
-                        · Este catálogo está en uso: no se pueden eliminar ítems existentes
-                      </span>
-                    )}
+      <div className={styles.contentArea}>
+        {error ? (
+          <div className={styles.errorState}>
+            <p>{error}</p>
+            <button className={styles.primaryBtn} onClick={() => navigate('/dashboard/catalogos')}>Volver</button>
+          </div>
+        ) : catalogo && (
+          <>
+            {/* Banner edición */}
+            {editMode && (
+              <div className={styles.editBanner}>
+                <span className={styles.editBannerDot} />
+                <span>
+                  Modo edición activo — los cambios no se guardan hasta presionar <strong>Guardar</strong>.
+                  Puedes <strong>arrastrar</strong> ítems y grupos para reorganizarlos.
+                  {catalogoEnUso && (
+                    <span style={{ marginLeft: 8, fontWeight: 600 }}>
+                      · Este catálogo está en uso: no se pueden eliminar ítems existentes
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+
+            {/* Catálogo header */}
+            <div className={styles.catalogoHeader}>
+              <div className={styles.catalogoMeta}>
+                <div className={styles.catalogoIconWrap} style={{
+                  backgroundColor: (editMode ? draftPublico : catalogo.publico) ? '#E6F1FB' : '#f3f4f6',
+                  color: (editMode ? draftPublico : catalogo.publico) ? '#185FA5' : '#64748b'
+                }}>
+                  {(editMode ? draftPublico : catalogo.publico) ? <IconGlobe size={20} /> : <IconLock size={20} />}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {editMode ? (
+                    <input
+                      className={styles.draftInputNombre}
+                      value={draftNombre}
+                      onChange={e => setDraftNombre(e.target.value)}
+                      placeholder="Nombre del catálogo"
+                    />
+                  ) : (
+                    <h1 className={styles.catalogoNombre}>{catalogo.nombre}</h1>
+                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 8px' }}>
+                    <span className={`${styles.badge} ${(editMode ? draftPublico : catalogo.publico) ? styles.badgePub : styles.badgePriv}`}>
+                      {(editMode ? draftPublico : catalogo.publico) ? 'Público' : 'Privado'}
+                    </span>
+                    {isOwner && <span className={styles.badgeOwner}>Tu catálogo</span>}
+                    {catalogoEnUso && <span className={styles.badgeEnUso}>En uso</span>}
+                  </div>
+
+                  {editMode ? (
+                    <textarea
+                      className={styles.draftInputDesc}
+                      value={draftDesc}
+                      onChange={e => setDraftDesc(e.target.value)}
+                      placeholder="Descripción opcional..."
+                      rows={2}
+                    />
+                  ) : (
+                    <p className={styles.catalogoDesc}>{catalogo.descripcion || 'Sin descripción'}</p>
+                  )}
+
+                  {editMode && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
+                      <span style={{ fontSize: '13px', color: '#64748b' }}>Visibilidad:</span>
+                      <button
+                        className={`${styles.visibilidadBtn} ${draftPublico ? styles.visibilidadBtnPub : styles.visibilidadBtnPriv}`}
+                        onClick={() => setDraftPublico(v => !v)}
+                      >
+                        {draftPublico ? <><IconGlobe size={13} /> Público</> : <><IconLock size={13} /> Privado</>}
+                      </button>
+                    </div>
+                  )}
+
+                  <span className={styles.catalogoFecha}>
+                    Creado el {new Date(catalogo.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
                   </span>
+                </div>
+              </div>
+
+              {isOwner && (
+                <div className={styles.headerActions}>
+                  {editMode ? (
+                    <>
+                      <button className={styles.cancelBtn} onClick={cancelEdit} disabled={saving}>Cancelar</button>
+                      <button className={styles.saveBtn} onClick={saveAll} disabled={saving}>
+                        {saving ? <><div className={styles.spinnerSm} /> Guardando...</> : <><IconSave size={14} /> Guardar cambios</>}
+                      </button>
+                    </>
+                  ) : (
+                    <button className={styles.editBtn} onClick={startEdit}>
+                      <IconEdit size={14} /> Editar catálogo
+                    </button>
+                  )}
                 </div>
               )}
+            </div>
 
-              {/* Catálogo header */}
-              <div className={styles.catalogoHeader}>
-                <div className={styles.catalogoMeta}>
-                  <div className={styles.catalogoIconWrap} style={{
-                    backgroundColor: (editMode ? draftPublico : catalogo.publico) ? '#E6F1FB' : '#f3f4f6',
-                    color: (editMode ? draftPublico : catalogo.publico) ? '#185FA5' : '#64748b'
-                  }}>
-                    {(editMode ? draftPublico : catalogo.publico) ? <IconGlobe size={20} /> : <IconLock size={20} />}
-                  </div>
+            {/* Stats */}
+            <div className={styles.statsRow}>
+              <div className={styles.statCard}>
+                <span className={styles.statNum}>{totalItems}</span>
+                <span className={styles.statLabel}>Ítems totales</span>
+              </div>
+              <div className={styles.statCard}>
+                <span className={styles.statNum}>{treeItems.filter(i => !i._deleted).length}</span>
+                <span className={styles.statLabel}>Grupos raíz</span>
+              </div>
+              <div className={styles.statCard}>
+                <span className={styles.statNum} style={{ color: catalogo.publico ? '#185FA5' : '#64748b' }}>
+                  {catalogo.publico ? 'Público' : 'Privado'}
+                </span>
+                <span className={styles.statLabel}>Visibilidad</span>
+              </div>
+            </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {editMode ? (
-                      <input
-                        className={styles.draftInputNombre}
-                        value={draftNombre}
-                        onChange={e => setDraftNombre(e.target.value)}
-                        placeholder="Nombre del catálogo"
-                      />
-                    ) : (
-                      <h1 className={styles.catalogoNombre}>{catalogo.nombre}</h1>
-                    )}
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: '4px 0 8px' }}>
-                      <span className={`${styles.badge} ${(editMode ? draftPublico : catalogo.publico) ? styles.badgePub : styles.badgePriv}`}>
-                        {(editMode ? draftPublico : catalogo.publico) ? 'Público' : 'Privado'}
-                      </span>
-                      {isOwner && <span className={styles.badgeOwner}>Tu catálogo</span>}
-                      {catalogoEnUso && <span className={styles.badgeEnUso}>En uso</span>}
-                    </div>
-
-                    {editMode ? (
-                      <textarea
-                        className={styles.draftInputDesc}
-                        value={draftDesc}
-                        onChange={e => setDraftDesc(e.target.value)}
-                        placeholder="Descripción opcional..."
-                        rows={2}
-                      />
-                    ) : (
-                      <p className={styles.catalogoDesc}>{catalogo.descripcion || 'Sin descripción'}</p>
-                    )}
-
-                    {editMode && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
-                        <span style={{ fontSize: '13px', color: '#64748b' }}>Visibilidad:</span>
-                        <button
-                          className={`${styles.visibilidadBtn} ${draftPublico ? styles.visibilidadBtnPub : styles.visibilidadBtnPriv}`}
-                          onClick={() => setDraftPublico(v => !v)}
-                        >
-                          {draftPublico ? <><IconGlobe size={13} /> Público</> : <><IconLock size={13} /> Privado</>}
-                        </button>
-                      </div>
-                    )}
-
-                    <span className={styles.catalogoFecha}>
-                      Creado el {new Date(catalogo.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
-                    </span>
-                  </div>
+            {/* Árbol */}
+            <div className={`${styles.treeSection} ${editMode ? styles.treeSectionEdit : ''}`}>
+              <div className={styles.treeSectionHeader}>
+                <div>
+                  <h2>Cuentas del catálogo</h2>
+                  {editMode && <p className={styles.treeSectionHint}>Edita los campos directamente · Arrastra <IconDrag size={11} /> para reorganizar</p>}
                 </div>
-
-                {isOwner && (
-                  <div className={styles.headerActions}>
-                    {editMode ? (
-                      <>
-                        <button className={styles.cancelBtn} onClick={cancelEdit} disabled={saving}>Cancelar</button>
-                        <button className={styles.saveBtn} onClick={saveAll} disabled={saving}>
-                          {saving ? <><div className={styles.spinnerSm} /> Guardando...</> : <><IconSave size={14} /> Guardar cambios</>}
-                        </button>
-                      </>
-                    ) : (
-                      <button className={styles.editBtn} onClick={startEdit}>
-                        <IconEdit size={14} /> Editar catálogo
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span className={styles.treeCount}>{totalItems} ítems</span>
+                  {editMode && (
+                    <>
+                      <button className={styles.addBtn} onClick={() => { setAddingRootItem(true); setAddingRootGroup(false); }}>
+                        <IconPlus size={12} /> Ítem
                       </button>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Stats */}
-              <div className={styles.statsRow}>
-                <div className={styles.statCard}>
-                  <span className={styles.statNum}>{totalItems}</span>
-                  <span className={styles.statLabel}>Ítems totales</span>
-                </div>
-                <div className={styles.statCard}>
-                  <span className={styles.statNum}>{treeItems.filter(i => !i._deleted).length}</span>
-                  <span className={styles.statLabel}>Grupos raíz</span>
-                </div>
-                <div className={styles.statCard}>
-                  <span className={styles.statNum} style={{ color: catalogo.publico ? '#185FA5' : '#64748b' }}>
-                    {catalogo.publico ? 'Público' : 'Privado'}
-                  </span>
-                  <span className={styles.statLabel}>Visibilidad</span>
+                      <button className={`${styles.addBtn} ${styles.addBtnBlue}`} onClick={() => { setAddingRootGroup(true); setAddingRootItem(false); }}>
+                        <IconPlus size={12} /> Grupo
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
 
-              {/* Árbol */}
-              <div className={`${styles.treeSection} ${editMode ? styles.treeSectionEdit : ''}`}>
-                <div className={styles.treeSectionHeader}>
-                  <div>
-                    <h2>Cuentas del catálogo</h2>
-                    {editMode && <p className={styles.treeSectionHint}>Edita los campos directamente en la tabla</p>}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span className={styles.treeCount}>{totalItems} ítems</span>
-                    {editMode && (
-                      <>
-                        <button className={styles.addBtn} onClick={() => { setAddingRootItem(true); setAddingRootGroup(false); }}>
-                          <IconPlus size={12} /> Ítem
-                        </button>
-                        <button className={`${styles.addBtn} ${styles.addBtnBlue}`} onClick={() => { setAddingRootGroup(true); setAddingRootItem(false); }}>
-                          <IconPlus size={12} /> Grupo
-                        </button>
-                      </>
-                    )}
-                  </div>
+              {totalItems === 0 && !addingRootItem && !addingRootGroup ? (
+                <div className={styles.emptyTree}>
+                  <IconFolder size={40} />
+                  <p>Este catálogo no tiene ítems aún</p>
+                  {editMode && (
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                      <button className={styles.addBtn} onClick={() => setAddingRootItem(true)}><IconPlus size={12} /> Añadir ítem</button>
+                      <button className={`${styles.addBtn} ${styles.addBtnBlue}`} onClick={() => setAddingRootGroup(true)}><IconPlus size={12} /> Añadir grupo</button>
+                    </div>
+                  )}
                 </div>
+              ) : (
+                <div className={styles.treeContainer}>
+                  {treeItems.filter(i => !i._deleted).map(item => (
+                    <TreeNode
+                      key={item.id}
+                      item={item}
+                      depth={0}
+                      editMode={editMode}
+                      catalogoEnUso={catalogoEnUso}
+                      onUpdateItem={handleUpdateItem}
+                      onAddChild={handleAddChild}
+                      onDeleteItem={handleDeleteItem}
+                      onMoveItem={handleMoveItem}
+                      treeItems={treeItems}
+                    />
+                  ))}
 
-                {totalItems === 0 && !addingRootItem && !addingRootGroup ? (
-                  <div className={styles.emptyTree}>
-                    <IconFolder size={40} />
-                    <p>Este catálogo no tiene ítems aún</p>
-                    {editMode && (
-                      <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                        <button className={styles.addBtn} onClick={() => setAddingRootItem(true)}><IconPlus size={12} /> Añadir ítem</button>
-                        <button className={`${styles.addBtn} ${styles.addBtnBlue}`} onClick={() => setAddingRootGroup(true)}><IconPlus size={12} /> Añadir grupo</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className={styles.treeContainer}>
-                    {treeItems.filter(i => !i._deleted).map(item => (
-                      <TreeNode
-                        key={item.id}
-                        item={item}
-                        depth={0}
-                        editMode={editMode}
-                        catalogoEnUso={catalogoEnUso}
-                        onUpdateItem={handleUpdateItem}
-                        onAddChild={handleAddChild}
-                        onDeleteItem={handleDeleteItem}
-                      />
-                    ))}
-                    {addingRootItem && (
-                      <div style={{ padding: '4px 16px' }}>
-                        <AddItemForm isGroup={false}
-                          onAdd={(n, c) => { handleAddChild(null, n, c, false); setAddingRootItem(false); }}
-                          onCancel={() => setAddingRootItem(false)} />
-                      </div>
-                    )}
-                    {addingRootGroup && (
-                      <div style={{ padding: '4px 16px' }}>
-                        <AddItemForm isGroup={true}
-                          onAdd={(n, c) => { handleAddChild(null, n, c, true); setAddingRootGroup(false); }}
-                          onCancel={() => setAddingRootGroup(false)} />
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-        </div>
+                  {/* Root drop zone: appears when dragging a nested item */}
+                  {editMode && (
+                    <div
+                      className={`${styles.rootDropZone} ${rootDropActive ? styles.rootDropZoneActive : ''}`}
+                      onDragOver={handleRootDragOver}
+                      onDragLeave={handleRootDragLeave}
+                      onDrop={handleRootDrop}
+                    >
+                      ↑ Soltar aquí para mover al nivel raíz
+                    </div>
+                  )}
+
+                  {addingRootItem && (
+                    <div style={{ padding: '4px 16px' }}>
+                      <AddItemForm isGroup={false}
+                        onAdd={(n, c) => { handleAddChild(null, n, c, false); setAddingRootItem(false); }}
+                        onCancel={() => setAddingRootItem(false)} />
+                    </div>
+                  )}
+                  {addingRootGroup && (
+                    <div style={{ padding: '4px 16px' }}>
+                      <AddItemForm isGroup={true}
+                        onAdd={(n, c) => { handleAddChild(null, n, c, true); setAddingRootGroup(false); }}
+                        onCancel={() => setAddingRootGroup(false)} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   );
