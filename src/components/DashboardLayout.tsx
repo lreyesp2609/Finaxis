@@ -55,6 +55,17 @@ function IconUnirse() {
   );
 }
 
+// Agrega esta función junto a los otros íconos (IconInicio, IconAnalisis, etc.)
+function IconEstadoFinanciero() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <line x1="8" y1="21" x2="16" y2="21"/>
+      <line x1="12" y1="17" x2="12" y2="21"/>
+    </svg>
+  );
+}
+
 function IconLogout() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -165,6 +176,7 @@ export default function DashboardLayout() {
           <NavItem to="/dashboard" icon={<IconInicio />} label="Inicio" end={true} />
           <NavItem to="/dashboard/analisis" icon={<IconAnalisis />} label="Empresas" />
           <NavItem to="/dashboard/catalogos" icon={<IconCatalogos />} label="Catálogos" />
+          <NavItem to="/dashboard/estado-financiero" icon={<IconEstadoFinanciero />} label="Estado Financiero" />
 
           <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.05em', margin: '24px 0 12px 0', paddingLeft: '12px' }}>SALAS</div>
           <NavItem to="/dashboard/salas" icon={<IconSalas />} label="Mis salas" />
