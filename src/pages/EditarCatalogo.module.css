@@ -213,3 +213,163 @@
   color: #3b82f6;
   font-weight: 500;
 }
+
+/* ── AGREGAR AL FINAL DE EditarCatalogo.module.css ── */
+
+/* Two-column layout */
+.twoColLayout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Left column (existing content area - ya definido, añadir flex-shrink) */
+/* Modifica la regla existente .contentArea para añadir: */
+/* flex: 1; min-width: 0; overflow-y: auto; */
+
+/* ── Formulas Panel (right column) ── */
+.formulasPanel {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid #e2e8f0;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.formulasPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: white;
+  flex-shrink: 0;
+}
+
+.formulasPanelTitle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.formulasBadge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #185FA5;
+  background: #E6F1FB;
+  padding: 1px 7px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.formulasNewBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 7px;
+  border: none;
+  background: #185FA5;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.formulasNewBtn:hover { background: #1a6fbe; }
+
+.formulasList {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Empty state */
+.formulasEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 20px;
+  text-align: center;
+  color: #94a3b8;
+}
+.formulasEmptyIcon {
+  color: #e2e8f0;
+  margin-bottom: 4px;
+}
+.formulasEmpty p {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0;
+}
+.formulasEmpty span {
+  font-size: 12px;
+  color: #94a3b8;
+  line-height: 1.5;
+}
+.formulasEmptyBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  border: 1.5px dashed #b5d4f4;
+  background: white;
+  color: #185FA5;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.formulasEmptyBtn:hover {
+  background: #E6F1FB;
+  border-style: solid;
+}
+
+/* ── badgeEnUso (faltaba en el CSS original) ── */
+.badgeEnUso {
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* ── spinnerSm (faltaba en el CSS original) ── */
+.spinnerSm {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+
+/* Responsive: colapsar panel de fórmulas en mobile */
+@media (max-width: 900px) {
+  .twoColLayout {
+    flex-direction: column;
+    overflow: visible;
+  }
+  .formulasPanel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e2e8f0;
+    max-height: 400px;
+  }
+}

@@ -1,62 +1,4 @@
-.page {
-  display: flex;
-  height: 100vh;
-  background-color: #ffffff;
-  font-family: system-ui, -apple-system, sans-serif;
-  color: #1e293b;
-  overflow: hidden;
-}
-
-.main {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow-y: auto;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem;
-}
-
-.sidebar {
-  width: 220px;
-  background-color: #f8fafc;
-  border-right: 1px solid #e5e7eb;
-  display: flex;
-  flex-direction: column;
-  padding: 24px 16px;
-  transition: transform 0.3s ease;
-}
-
-.hamburger {
-  display: none;
-  position: fixed;
-  top: 1rem;
-  left: 1rem;
-  z-index: 50;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-}
-
-.sidebarOverlay {
-  display: none;
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.3);
-  backdrop-filter: blur(2px);
-  z-index: 90;
-}
-
-.closeSidebar {
-  display: none;
-  background: transparent;
-  border: none;
-  color: #64748b;
-  cursor: pointer;
-}
+/* ══ UnirseSala.module.css ══ */
 
 .centeredContent {
   width: 100%;
@@ -90,7 +32,7 @@
 .header h2 {
   margin: 0;
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 700;
   color: #1e293b;
   margin-bottom: 0.5rem;
 }
@@ -111,6 +53,7 @@
   margin-top: 1.5rem;
 }
 
+/* ── Form ── */
 .formGroup {
   display: flex;
   flex-direction: column;
@@ -127,18 +70,19 @@
 .codeInput {
   width: 100%;
   background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  border: 1.5px solid #e2e8f0;
   border-radius: 12px;
   padding: 1rem;
-  font-size: 16px;
+  font-size: 24px;
   font-family: 'Courier New', monospace;
   text-align: center;
   text-transform: uppercase;
-  letter-spacing: 3px;
-  font-weight: 700;
+  letter-spacing: 6px;
+  font-weight: 800;
   color: #185FA5;
   outline: none;
   transition: all 0.2s;
+  box-sizing: border-box;
 }
 
 .codeInput:focus {
@@ -147,10 +91,19 @@
   box-shadow: 0 0 0 4px rgba(24, 95, 165, 0.1);
 }
 
+.codeInput::placeholder {
+  color: #cbd5e1;
+  letter-spacing: 4px;
+}
+
 .errorText {
   color: #ef4444;
   font-size: 13px;
   text-align: center;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 7px;
+  padding: 7px 12px;
 }
 
 .submitBtn {
@@ -168,9 +121,10 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  font-family: inherit;
 }
 
-.submitBtn:hover {
+.submitBtn:hover:not(:disabled) {
   background: #14508a;
 }
 
@@ -179,12 +133,12 @@
   cursor: not-allowed;
 }
 
-/* Success State */
+/* ── Success / found state ── */
 .successState {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1.5rem;
+  gap: 16px;
 }
 
 .successIcon {
@@ -198,10 +152,46 @@
   justify-content: center;
 }
 
+.closedIcon {
+  width: 56px;
+  height: 56px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pendingIcon {
+  width: 56px;
+  height: 56px;
+  background: #fef9c3;
+  color: #d97706;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .successTitle {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: #065f46;
+  margin: 0;
+}
+
+.closedTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #374151;
+  margin: 0;
+}
+
+.pendingTitle {
+  font-size: 17px;
+  font-weight: 700;
+  color: #92400e;
   margin: 0;
 }
 
@@ -210,114 +200,134 @@
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
-  padding: 1rem;
+  padding: 14px 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 9px;
 }
 
 .infoRow {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   font-size: 13px;
+  gap: 8px;
 }
 
 .infoLabel {
   color: #64748b;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .infoValue {
   font-weight: 600;
   color: #1e293b;
+  text-align: right;
+}
+
+.infoCode {
+  font-family: monospace;
+  font-size: 15px;
+  letter-spacing: 3px;
+  color: #185FA5;
+}
+
+.actionRow {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.cancelBtn {
+  flex: 1;
+  background: white;
+  color: #64748b;
+  padding: 11px 14px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.cancelBtn:hover:not(:disabled) {
+  border-color: #94a3b8;
+  color: #1e293b;
+  background: #f8fafc;
+}
+
+.cancelBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .confirmBtn {
-  width: 100%;
+  flex: 2;
   background: #059669;
   color: white;
-  padding: 12px;
+  padding: 11px 14px;
   border-radius: 10px;
   border: none;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-family: inherit;
 }
 
-.confirmBtn:hover {
+.confirmBtn:hover:not(:disabled) {
   background: #047857;
 }
 
+.confirmBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* ── Footer ── */
 .footerText {
   margin-top: 2rem;
   text-align: center;
   font-size: 13px;
   color: #94a3b8;
+  line-height: 1.6;
 }
 
 .footerText b {
   color: #64748b;
 }
 
+/* ── Spinner ── */
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   border: 2px solid rgba(255,255,255,0.3);
   border-top-color: white;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
-.sidebarOpen {}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
 
+/* ── Responsive ── */
 @media (max-width: 768px) {
-  .sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    z-index: 100;
-    transform: translateX(-100%);
-    box-shadow: 2px 0 8px rgba(0,0,0,0.1);
-  }
-
-  .sidebarOpen {
-    transform: translateX(0);
-  }
-
-  .hamburger {
-    display: block;
-  }
-
-  .sidebarOverlay {
-    display: block;
-  }
-
-  .closeSidebar {
-    display: block;
-  }
-
-  .main {
-    padding: 4rem 1.5rem 1.5rem 1.5rem;
-  }
-
-  .header h2 {
-    font-size: 16px;
-  }
-
-  .card {
-    padding: 1.25rem;
-  }
-
-  .codeInput {
-    padding: 0.75rem;
-    font-size: 14px;
-    letter-spacing: 2px;
-  }
+  .header h2 { font-size: 16px; }
+  .card { padding: 1.25rem; }
+  .codeInput { font-size: 20px; letter-spacing: 4px; }
 }
 
 @media (max-width: 480px) {
-  .main {
-    padding: 4rem 1rem 1rem 1rem;
-  }
+  .actionRow { flex-direction: column; }
 }
