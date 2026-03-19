@@ -12,6 +12,8 @@ import UnirseSala from './pages/UnirseSala';
 import AuthCallback from './pages/AuthCallback';
 import EditarCatalogo from './pages/EditarCatalogo';
 import DashboardLayout from './components/DashboardLayout';
+import SalaParticipante from './pages/Salaparticipante';
+import VerParticipante from './pages/Verparticipante';
 
 export default function App() {
   return (
@@ -36,6 +38,9 @@ export default function App() {
             <Route path="salas" element={<MisSalas />} />
             <Route path="unirse" element={<UnirseSala />} />
             <Route path="catalogos/:id" element={<EditarCatalogo />} />
+            <Route path="sala/:codigo" element={<SalaParticipante />} />
+            <Route path="salap/:codigosala/participante/:participanteId" element={<VerParticipante />} />
+
           </Route>
 
           {/* Catch-all */}
