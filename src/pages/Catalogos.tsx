@@ -28,10 +28,37 @@ function IconAttachment() {
   );
 }
 
+/* ── Tipos ── */
+interface TipoEmpresa { id: number; nombre: string; }
+
+const TIPO_ICONS: Record<string, string> = { financiera: '🏦', comercial: '🏪' };
+const TIPO_COLORS: Record<string, { bg: string; color: string; border: string }> = {
+  financiera: { bg: '#E6F1FB', color: '#185FA5', border: '#185FA5' },
+  comercial: { bg: '#fff7ed', color: '#d97706', border: '#d97706' },
+};
+
+/* ── Badge de tipo ── */
+function TipoBadge({ tipoNombre }: { tipoNombre: string | null | undefined }) {
+  if (!tipoNombre) return null;
+  const col = TIPO_COLORS[tipoNombre] ?? TIPO_COLORS.comercial;
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6,
+      background: col.bg, color: col.color, textTransform: 'capitalize',
+      display: 'inline-flex', alignItems: 'center', gap: 3,
+    }}>
+      {TIPO_ICONS[tipoNombre] ?? ''} {tipoNombre}
+    </span>
+  );
+}
+
 export default function Catalogos() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+
+  // Tipos de empresa (cargados una vez)
+  const [tipos, setTipos] = useState<TipoEmpresa[]>([]);
 
   // Catalog States
   const [catalogsList, setCatalogsList] = useState<any[]>([]);
@@ -53,6 +80,7 @@ export default function Catalogos() {
   const [formCatDesc, setFormCatDesc] = useState('');
   const [formCatFile, setFormCatFile] = useState<File | null>(null);
   const [formCatPublic, setFormCatPublic] = useState(false);
+  const [formCatIdTipo, setFormCatIdTipo] = useState<number | null>(null); // null hasta que el usuario elija
   const [isCreatingCat, setIsCreatingCat] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractedItems, setExtractedItems] = useState<any[]>([]);
@@ -66,11 +94,15 @@ export default function Catalogos() {
     async function init() {
       if (!user) return;
       await supabase.from('personas').select('nombre').eq('id', user.id).maybeSingle();
-      
+
+      // Cargar tipos de empresa
+      const { data: tiposData } = await supabase.from('tipo_empresa').select('id, nombre').order('id');
+      setTipos(tiposData ?? []);
+
       // Eagerly load totals for the tabs
       supabase.rpc('get_mis_catalogos', { p_limit: 1, p_offset: 0, p_search: '' })
         .then(({ data }) => { if (data?.[0]?.total_count) setCatTotal(data[0].total_count); });
-        
+
       supabase.rpc('get_catalogos_publicos', { p_limit: 1, p_offset: 0, p_search: '' })
         .then(({ data }) => { if (data?.[0]?.total_count) setPubCatTotal(data[0].total_count); });
 
@@ -93,6 +125,7 @@ export default function Catalogos() {
       setCatalogsList(data.map((c: any) => ({
         id: c.id.toString(), nombre: c.nombre, descripcion: c.descripcion,
         tipo: c.publico ? 'public' : 'private', created_at: c.created_at,
+        idtipo_empresa: c.idtipo_empresa, tipo_nombre: c.tipo_nombre,
       })));
       setCatTotal(data[0]?.total_count ?? 0);
     }
@@ -108,6 +141,7 @@ export default function Catalogos() {
       setPublicCatalogsList(data.map((c: any) => ({
         id: c.id.toString(), nombre: c.nombre, descripcion: c.descripcion,
         autor_nombre: c.autor_nombre, created_at: c.created_at,
+        idtipo_empresa: c.idtipo_empresa, tipo_nombre: c.tipo_nombre,
       })));
       setPubCatTotal(data[0]?.total_count ?? 0);
     }
@@ -133,10 +167,13 @@ export default function Catalogos() {
   };
 
   const createCatalog = async () => {
-    if (!formCatNombre) return;
+    if (!formCatNombre || formCatIdTipo === null) return;
     setIsCreatingCat(true);
     const { data, error } = await supabase.rpc('crear_catalogo', {
-      p_nombre: formCatNombre, p_descripcion: formCatDesc || null, p_publico: formCatPublic,
+      p_nombre: formCatNombre,
+      p_descripcion: formCatDesc || null,
+      p_publico: formCatPublic,
+      p_idtipo: formCatIdTipo,
     });
     if (error) {
       showToast('Error al crear catálogo');
@@ -163,9 +200,9 @@ export default function Catalogos() {
     setCatPage(0);
     setIsCreatingCat(false);
     setShowCatalogForm(false);
-    setFormCatNombre(''); setFormCatDesc(''); setFormCatFile(null); setExtractedItems([]);
+    setFormCatNombre(''); setFormCatDesc(''); setFormCatFile(null);
+    setExtractedItems([]); setFormCatIdTipo(null);
     showToast(`✓ Catálogo creado con éxito`);
-
   };
 
   const showToast = (msg: string) => {
@@ -181,155 +218,74 @@ export default function Catalogos() {
     <>
       <style>{`
         .cat-toast {
-          position: fixed;
-          top: 24px;
-          left: 50%;
-          transform: translateX(-50%);
-          background-color: #ecfdf5;
-          border: 1px solid #10b981;
-          color: #064e3b;
-          padding: 12px 24px;
-          border-radius: 12px;
-          z-index: 2000;
-          font-weight: 600;
-          font-size: 14px;
+          position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+          background-color: #ecfdf5; border: 1px solid #10b981; color: #064e3b;
+          padding: 12px 24px; border-radius: 12px; z-index: 2000; font-weight: 600; font-size: 14px;
         }
         .cat-card {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          padding: 16px 20px;
-          margin-bottom: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-          transition: box-shadow 0.2s;
+          background: white; border: 1px solid #e5e7eb; border-radius: 12px;
+          padding: 16px 20px; margin-bottom: 12px; display: flex; align-items: center;
+          justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,0.06); transition: box-shadow 0.2s;
         }
-        .cat-card:hover {
-          box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        }
+        .cat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
         .cat-edit-btn {
-          border: 1px solid #d1d5db;
-          background: white;
-          color: #374151;
-          border-radius: 8px;
-          padding: 7px 16px;
-          font-size: 13px;
-          cursor: pointer;
-          font-weight: 500;
-          transition: border-color 0.15s, color 0.15s;
-          white-space: nowrap;
-          flex-shrink: 0;
+          border: 1px solid #d1d5db; background: white; color: #374151; border-radius: 8px;
+          padding: 7px 16px; font-size: 13px; cursor: pointer; font-weight: 500;
+          transition: border-color 0.15s, color 0.15s; white-space: nowrap; flex-shrink: 0;
         }
-        .cat-edit-btn:hover {
-          border-color: #185FA5;
-          color: #185FA5;
-        }
+        .cat-edit-btn:hover { border-color: #185FA5; color: #185FA5; }
         .cat-tab {
-          background: none;
-          border: none;
-          border-bottom: 2px solid transparent;
-          padding: 12px 4px;
-          margin-right: 24px;
-          font-size: 14px;
-          font-weight: 600;
-          color: #6b7280;
-          cursor: pointer;
-          transition: color 0.15s, border-color 0.15s;
+          background: none; border: none; border-bottom: 2px solid transparent;
+          padding: 12px 4px; margin-right: 24px; font-size: 14px; font-weight: 600;
+          color: #6b7280; cursor: pointer; transition: color 0.15s, border-color 0.15s;
         }
-        .cat-tab-active {
-          color: #185FA5;
-          border-bottom-color: #185FA5;
-        }
+        .cat-tab-active { color: #185FA5; border-bottom-color: #185FA5; }
         .cat-search {
-          width: 100%;
-          border: 1px solid #d1d5db;
-          border-radius: 8px;
-          padding: 10px 14px;
-          font-size: 14px;
-          outline: none;
-          box-sizing: border-box;
-          margin-bottom: 20px;
-          transition: border-color 0.15s, box-shadow 0.15s;
+          width: 100%; border: 1px solid #d1d5db; border-radius: 8px;
+          padding: 10px 14px; font-size: 14px; outline: none; box-sizing: border-box;
+          margin-bottom: 20px; transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .cat-search:focus {
-          border-color: #185FA5;
-          box-shadow: 0 0 0 3px rgba(24,95,165,0.1);
-        }
+        .cat-search:focus { border-color: #185FA5; box-shadow: 0 0 0 3px rgba(24,95,165,0.1); }
         .cat-primary-btn {
-          background: #185FA5;
-          color: white;
-          padding: 10px 20px;
-          border-radius: 8px;
-          border: none;
-          font-size: 14px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s;
+          background: #185FA5; color: white; padding: 10px 20px; border-radius: 8px;
+          border: none; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s;
         }
         .cat-primary-btn:hover { background: #14508a; }
         .cat-primary-btn:disabled { background: #94a3b8; cursor: not-allowed; }
         .cat-secondary-btn {
-          background: white;
-          color: #374151;
-          padding: 10px 20px;
-          border-radius: 8px;
-          border: 1px solid #d1d5db;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
+          background: white; color: #374151; padding: 10px 20px; border-radius: 8px;
+          border: 1px solid #d1d5db; font-size: 14px; font-weight: 500; cursor: pointer;
         }
         .cat-outline-btn {
-          background: white;
-          color: #374151;
-          padding: 10px 16px;
-          border-radius: 8px;
-          border: 1px solid #d1d5db;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          gap: 8px;
+          background: white; color: #374151; padding: 10px 16px; border-radius: 8px;
+          border: 1px solid #d1d5db; font-size: 14px; font-weight: 500; cursor: pointer;
+          display: flex; align-items: center; gap: 8px;
         }
         .cat-form-card {
-          background: white;
-          border: 1px solid #e5e7eb;
-          border-radius: 12px;
-          overflow: hidden;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+          background: white; border: 1px solid #e5e7eb; border-radius: 12px;
+          overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
         .cat-form-header {
-          padding: 14px 20px;
-          border-bottom: 1px solid #f1f5f9;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
+          padding: 14px 20px; border-bottom: 1px solid #f1f5f9;
+          display: flex; justify-content: space-between; align-items: center;
         }
         .cat-form-header h3 { margin: 0; font-size: 15px; font-weight: 600; }
         .cat-form-body { padding: 24px; display: flex; flex-direction: column; gap: 20px; }
         .cat-label { font-size: 12px; font-weight: 600; color: #9ca3af; text-transform: uppercase; margin-bottom: 6px; display: block; }
         .cat-input {
           width: 100%; border: 1px solid #e5e7eb; border-radius: 8px;
-          padding: 10px 14px; font-size: 14px; outline: none; color: #111827;
-          box-sizing: border-box;
+          padding: 10px 14px; font-size: 14px; outline: none; color: #111827; box-sizing: border-box;
         }
         .cat-input:focus { border-color: #185FA5; box-shadow: 0 0 0 3px rgba(24,95,165,0.1); }
         .cat-radio-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .cat-radio-card {
           padding: 12px; border: 1px solid #e5e7eb; border-radius: 8px;
-          text-align: center; font-size: 14px; font-weight: 600; color: #6b7280;
-          cursor: pointer; transition: all 0.2s;
+          text-align: center; font-size: 14px; font-weight: 600; color: #6b7280; cursor: pointer; transition: all 0.2s;
         }
         .cat-radio-card-active { border-color: #185FA5; background: #e0f0ff; color: #185FA5; }
         .cat-radio-card-gray { border-color: #185FA5; background: #f1f5f9; color: #374151; }
         .cat-form-footer { display: flex; justify-content: flex-end; gap: 12px; padding-top: 20px; border-top: 1px solid #f1f5f9; }
-        .cat-empty {
-          text-align: center;
-          padding: 80px 40px;
-          color: #94a3b8;
-        }
+        .cat-empty { text-align: center; padding: 80px 40px; color: #94a3b8; }
         .cat-empty h3 { font-size: 18px; font-weight: 600; color: #111827; margin: 0 0 8px; }
         .cat-empty p { font-size: 14px; color: #6b7280; margin: 0; }
       `}</style>
@@ -358,14 +314,56 @@ export default function Catalogos() {
               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280', display: 'flex' }} onClick={() => setShowCatalogForm(false)}><IconX /></button>
             </div>
             <div className="cat-form-body">
+
+              {/* Nombre */}
               <div>
                 <label className="cat-label">Nombre</label>
                 <input type="text" className="cat-input" placeholder="Ej: Catálogo SB Bancos 2024" value={formCatNombre} onChange={e => setFormCatNombre(e.target.value)} />
               </div>
+
+              {/* Descripción */}
               <div>
                 <label className="cat-label">Descripción</label>
                 <textarea className="cat-input" style={{ resize: 'none' }} rows={3} placeholder="Descripción opcional..." value={formCatDesc} onChange={e => setFormCatDesc(e.target.value)} />
               </div>
+
+              {/* Tipo de empresa — solo Financiera / Comercial */}
+              <div>
+                <label className="cat-label">Tipo de empresa <span style={{ color: '#dc2626' }}>*</span></label>
+                <div style={{ display: 'grid', gridTemplateColumns: `repeat(${tipos.length}, 1fr)`, gap: 12 }}>
+                  {tipos.map(t => {
+                    const col = TIPO_COLORS[t.nombre] ?? TIPO_COLORS.comercial;
+                    const active = formCatIdTipo === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => setFormCatIdTipo(t.id)}
+                        style={{
+                          padding: '14px 10px', borderRadius: 10,
+                          border: `2px solid ${active ? col.border : '#e2e8f0'}`,
+                          background: active ? col.bg : 'white',
+                          cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                          alignItems: 'center', gap: 6, transition: 'all 0.15s', fontFamily: 'inherit',
+                        }}
+                      >
+                        <span style={{ fontSize: 26 }}>{TIPO_ICONS[t.nombre] ?? '🏢'}</span>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: active ? col.color : '#475569', textTransform: 'capitalize' }}>{t.nombre}</span>
+                        <span style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                          {t.nombre === 'financiera' ? 'Bancos, cooperativas, seguros' : 'Empresas, industrias, comercios'}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {formCatIdTipo === null && (
+                  <p style={{ fontSize: 11, color: '#f59e0b', margin: '6px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    ⚠ Selecciona un tipo para continuar
+                  </p>
+                )}
+              </div>
+
+              {/* Archivo PDF */}
               <div>
                 <label className="cat-label">Archivo PDF</label>
                 <button className="cat-outline-btn" onClick={() => catFileInputRef.current?.click()}>
@@ -379,6 +377,8 @@ export default function Catalogos() {
                   </div>
                 )}
               </div>
+
+              {/* Visibilidad */}
               <div>
                 <label className="cat-label">Visibilidad</label>
                 <div className="cat-radio-grid">
@@ -386,9 +386,14 @@ export default function Catalogos() {
                   <div className={`cat-radio-card ${formCatPublic ? 'cat-radio-card-active' : ''}`} onClick={() => setFormCatPublic(true)}>Público</div>
                 </div>
               </div>
+
               <div className="cat-form-footer">
                 <button className="cat-secondary-btn" onClick={() => setShowCatalogForm(false)}>Cancelar</button>
-                <button className="cat-primary-btn" disabled={!formCatNombre || isCreatingCat || extracting} onClick={createCatalog}>
+                <button
+                  className="cat-primary-btn"
+                  disabled={!formCatNombre || formCatIdTipo === null || isCreatingCat || extracting}
+                  onClick={createCatalog}
+                >
                   {isCreatingCat ? 'Creando...' : 'Crear catálogo'}
                 </button>
               </div>
@@ -436,9 +441,20 @@ export default function Catalogos() {
               currentList.map(cat => (
                 <div key={cat.id} className="cat-card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '16px', minWidth: 0 }}>
-                    <div style={{ width: 40, height: 40, background: '#E6F1FB', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>📋</div>
+                    {/* Ícono con color según tipo */}
+                    <div style={{
+                      width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20,
+                      background: cat.tipo_nombre ? (TIPO_COLORS[cat.tipo_nombre]?.bg ?? '#E6F1FB') : '#E6F1FB',
+                    }}>
+                      {cat.tipo_nombre ? (TIPO_ICONS[cat.tipo_nombre] ?? '📋') : '📋'}
+                    </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 15, color: '#111827', marginBottom: 3 }}>{cat.nombre}</div>
+                      {/* Nombre + badge de tipo */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 3 }}>
+                        <span style={{ fontWeight: 600, fontSize: 15, color: '#111827' }}>{cat.nombre}</span>
+                        <TipoBadge tipoNombre={cat.tipo_nombre} />
+                      </div>
                       <div style={{ fontSize: 13, color: '#6b7280' }}>
                         {cat.descripcion || 'Sin descripción'}
                         {' · '}
