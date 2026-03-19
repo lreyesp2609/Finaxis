@@ -14,6 +14,7 @@ import EditarCatalogo from './pages/EditarCatalogo';
 import DashboardLayout from './components/DashboardLayout';
 import SalaParticipante from './pages/Salaparticipante';
 import VerParticipante from './pages/Verparticipante';
+import ModuloEstadoFinanciero from './pages/ModuloEstadoFinanciero';
 
 export default function App() {
   return (
@@ -27,7 +28,7 @@ export default function App() {
           <Route path="/" element={<Navigate to="/login" replace />} />
 
           {/* Public routes: logged-in users bounce to /dashboard */}
-          <Route path="/login"    element={<PublicRoute><Login /></PublicRoute>} />
+          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
 
           {/* Protected routes: needs session */}
@@ -40,7 +41,7 @@ export default function App() {
             <Route path="catalogos/:id" element={<EditarCatalogo />} />
             <Route path="sala/:codigo" element={<SalaParticipante />} />
             <Route path="salap/:codigosala/participante/:participanteId" element={<VerParticipante />} />
-
+            <Route path="estado-financiero" element={<ModuloEstadoFinanciero />} />
           </Route>
 
           {/* Catch-all */}
