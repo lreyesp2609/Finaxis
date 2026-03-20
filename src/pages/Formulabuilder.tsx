@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { FormulaToken, Formula } from './FormulaCard';
-import styles from './FormulaBuilder.module.css';
+import styles from './Formulabuilder.module.css';
 
 /* ── Types ── */
 interface ItemCatFlat {
@@ -199,7 +199,7 @@ export default function FormulaBuilder({ items, formulaToEdit, saving = false, o
                 <div className={styles.canvasActions}>
                   <button className={styles.canvasActionBtn} onClick={undoLast} disabled={tokens.length === 0} title="Deshacer último">
                     {/* <IconUndo size={12} /> */}
-:) 
+                    :)
                   </button>
                   <button className={styles.canvasActionBtn} onClick={clearAll} disabled={tokens.length === 0} title="Limpiar todo">
                     <IconDelete size={12} />
