@@ -49,6 +49,17 @@ const CAT_COLORS: Record<string, string> = {
   Crédito: '#1d4ed8', Liquidez: '#6d28d9', Operacional: '#854d0e', Mercado: '#15803d',
 };
 
+// Mapa de nombres de bloques por primer dígito del código
+const BLOCK_NAMES: Record<string, string> = {
+  '1': 'ACTIVOS',
+  '2': 'PASIVOS',
+  '3': 'PATRIMONIO',
+  '4': 'GASTOS',
+  '5': 'INGRESOS',
+  '6': 'CONTINGENTES',
+  '7': 'CUENTAS DE ORDEN',
+};
+
 function getNivel(prob: number, impacto: number): string {
   const score = prob * impacto;
   if (score >= 16) return 'CRÍTICO';
@@ -156,7 +167,7 @@ function EmpresaSelector({ user, selected, onSelect }: { user: string; selected:
           <div style={{ padding: '10px 14px', borderBottom: '1px solid #f1f5f9', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Mis empresas</div>
           {loading ? <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Cargando…</div>
             : empresas.length === 0 ? <div style={{ padding: 20, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>No hay empresas registradas</div>
-              : empresas.map(e => {
+              : empresas.map((e: Empresa) => {
                 const col = TIPO_COLORS[e.tipo_nombre] ?? TIPO_COLORS.comercial;
                 return (
                   <button key={e.id} onClick={() => { onSelect(e); setOpen(false); }} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '10px 14px', border: 'none', background: selected?.id === e.id ? '#f0f7ff' : 'white', textAlign: 'left', cursor: 'pointer', fontFamily: 'inherit' }}
@@ -253,6 +264,21 @@ function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: { idemp
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// REEMPLAZA TabCatalogo, TabVertical y TabHorizontal en ModuloEstadoFinanciero.tsx
+//
+// PROBLEMA IDENTIFICADO EN SUPABASE:
+//   - Catálogo 12 (Balance General): ítems raíz son HOJAS (contenedor=false, iditempadre=null)
+//     Ej: "FONDOS DISPONIBLES" cod=11, "OBLIGACIONES CON PÚBLICO" cod=21, etc.
+//   - Catálogo 13 (Estado de Resultados): mezcla de:
+//       * Contenedores raíz (contenedor=true, iditempadre=null): M1,M2,M3,M4,M5
+//       * Hojas raíz sueltas (contenedor=false, iditempadre=null): 56,47,48
+//
+// SOLUCIÓN: renderizar TODOS los ítems en orden (flattenWithDepth ya los ordena bien).
+// Los contenedores = cabecera oscura. Las hojas = fila normal con indentación por depth.
+// No filtrar nada — mostrar el árbol completo tal como viene de Supabase.
+// ─────────────────────────────────────────────────────────────────────────────
+
 /* ─── TAB: Catálogo ── */
 function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
   const [items, setItems] = useState<ItemCat[]>([]);
@@ -269,8 +295,14 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
     });
   }, [estadoOverride?.id]);
 
-  const filtered = search ? items.filter(i => i.nombre.toLowerCase().includes(search.toLowerCase()) || (i.codigo ?? '').includes(search)) : items;
-  const COL_W = 140, LABEL_W = 320;
+  const filtered = search
+    ? items.filter(i =>
+      i.nombre.toLowerCase().includes(search.toLowerCase()) ||
+      (i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
+    )
+    : items;
+
+  const COL_W = 140, LABEL_W = 380;
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
 
@@ -279,35 +311,87 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', flex: '0 1 280px' }}>
           <IconSearch size={14} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cuenta…" style={{ border: 'none', outline: 'none', fontSize: 13, color: '#1e293b', background: 'transparent', width: '100%' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cuenta…"
+            style={{ border: 'none', outline: 'none', fontSize: 13, color: '#1e293b', background: 'transparent', width: '100%' }} />
         </div>
-        {/* Estado viene del selector global */}
       </div>
+
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: LABEL_W + anios.length * COL_W + 40 }}>
+          <div style={{ minWidth: LABEL_W + anios.length * COL_W }}>
+            {/* Cabecera */}
             <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 5 }}>
-              <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Cuenta</div>
-              {anios.map(a => <div key={a.id} style={{ width: COL_W, minWidth: COL_W, padding: '11px 12px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>)}
+              <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
+              {anios.map(a => (
+                <div key={a.id} style={{ width: COL_W, minWidth: COL_W, padding: '11px 12px', textAlign: 'right' as const, fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>
+              ))}
             </div>
-            {filtered.length === 0 ? <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Sin resultados</div>
+
+            {filtered.length === 0
+              ? <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Sin resultados</div>
               : filtered.map(item => {
                 const depth = item.depth ?? 0;
+                const isContenedor = item.contenedor;
+
+                const bgBase = isContenedor
+                  ? (depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569')
+                  : (depth === 0 ? 'white' : 'white');
+
                 return (
-                  <div key={item.id} style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: item.contenedor ? '#f8fafc' : 'white' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
-                    onMouseLeave={e => (e.currentTarget.style.background = item.contenedor ? '#f8fafc' : 'white')}>
-                    <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px', paddingLeft: 20 + depth * 22, display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
-                      <span style={{ fontSize: 13, color: '#1e293b', fontWeight: item.contenedor ? 700 : 400 }}>{item.nombre}</span>
+                  <div
+                    key={item.id}
+                    style={{
+                      display: 'flex',
+                      borderBottom: `1px solid ${isContenedor ? 'rgba(255,255,255,0.06)' : '#f1f5f9'}`,
+                      background: bgBase,
+                    }}
+                    onMouseEnter={e => { if (!isContenedor) e.currentTarget.style.background = '#f0f7ff'; }}
+                    onMouseLeave={e => { if (!isContenedor) e.currentTarget.style.background = bgBase; }}
+                  >
+                    <div style={{
+                      width: LABEL_W, minWidth: LABEL_W,
+                      padding: '9px 20px',
+                      paddingLeft: 20 + depth * 22,
+                      display: 'flex', alignItems: 'center', gap: 7,
+                    }}>
+                      {item.codigo && (
+                        <span style={{
+                          fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+                          color: isContenedor ? 'rgba(255,255,255,0.85)' : '#185FA5',
+                          background: isContenedor ? 'rgba(255,255,255,0.15)' : '#E6F1FB',
+                          padding: '1px 5px', borderRadius: 4, flexShrink: 0,
+                        }}>{item.codigo}</span>
+                      )}
+                      <span style={{
+                        fontSize: isContenedor ? 12 : 13,
+                        color: isContenedor ? 'white' : '#1e293b',
+                        fontWeight: isContenedor ? 700 : 400,
+                        textTransform: isContenedor ? 'uppercase' as const : 'none' as const,
+                        letterSpacing: isContenedor ? '0.04em' : 'normal',
+                      }}>
+                        {item.nombre}
+                      </span>
                     </div>
                     {anios.map(a => {
                       const val = valMap[item.id]?.[a.id] ?? 0;
-                      return <div key={a.id} style={{ width: COL_W, minWidth: COL_W, padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 13, color: val !== 0 ? '#0f172a' : '#cbd5e1', fontWeight: item.contenedor ? 700 : 400 }}>{fmtNum(val)}</div>;
+                      return (
+                        <div key={a.id} style={{
+                          width: COL_W, minWidth: COL_W, padding: '9px 12px',
+                          textAlign: 'right' as const, fontFamily: 'monospace',
+                          fontSize: isContenedor ? 12 : 13,
+                          color: isContenedor
+                            ? (val !== 0 ? 'white' : 'rgba(255,255,255,0.3)')
+                            : (val !== 0 ? '#0f172a' : '#cbd5e1'),
+                          fontWeight: isContenedor ? 700 : 400,
+                        }}>
+                          {fmtNum(val)}
+                        </div>
+                      );
                     })}
                   </div>
                 );
-              })}
+              })
+            }
           </div>
         </div>
       </div>
@@ -315,12 +399,33 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
   );
 }
 
-/* ─── TAB: Análisis Vertical — % ARREGLADO ── */
+// ─────────────────────────────────────────────────────────────────────────────
+// TabVertical — versión final
+//
+// MODO AUTOMÁTICO:
+//   Cada ítem raíz (iditempadre=null) es su propio 100%.
+//   - Si es contenedor (M1, M2...): cabecera azul oscura, sus hijos muestran
+//     cuánto % representan del total de ese contenedor raíz.
+//   - Si es hoja raíz suelta (ej: cod=56 OTROS INGRESOS): fila normal con 100%.
+//
+// MODO CONFIGURAR:
+//   La ingeniera selecciona UNO o VARIOS ítems raíz.
+//   La suma de todos los seleccionados = 100%.
+//   Todas las cuentas debajo de esos grupos se calculan sobre ESE total único.
+//   Solo en memoria — no se guarda en BD.
+//
+// ESTRUCTURA REAL EN SUPABASE (Finaxis):
+//   Catálogo 12: hojas raíz directas (cod 11,12,13,21,22...)
+//   Catálogo 13: contenedores raíz M1-M5 + hojas sueltas (56,47,48)
+// ─────────────────────────────────────────────────────────────────────────────
+
 function TabVertical({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
   const [items, setItems] = useState<ItemCat[]>([]);
   const [anios, setAnios] = useState<Anio[]>([]);
   const [valMap, setValMap] = useState<Record<number, Record<number, number>>>({});
   const [loading, setLoading] = useState(true);
+  const [subTab, setSubTab] = useState<'auto' | 'config'>('auto');
+  const [selectedRoots, setSelectedRoots] = useState<number[]>([]);
 
   useEffect(() => {
     if (!estadoOverride) return;
@@ -332,142 +437,484 @@ function TabVertical({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
 
-  // Análisis Vertical:
-  // - El denominador de cada cuenta es la suma de todos sus "hermanos" directos bajo el mismo padre raíz
-  // - Si la cuenta tiene iditempadre === null es un grupo raíz (ej: 1-ACTIVOS) → no la mostramos en la tabla
-  // - Si la cuenta tiene iditempadre === null Y es no-contenedor (ej: catálogo SB donde 11,13,14 son raíz)
-  //   entonces el denominador es la suma de TODOS los hermanos al mismo nivel raíz (que tengan iditempadre === null)
-  const itemMap: Record<number, ItemCat> = {};
-  for (const i of items) itemMap[i.id] = i;
-
-  // Obtener el id del padre de primer nivel (raíz) de un item
-  function getParentRootId(item: ItemCat): number | null {
-    // Si no tiene padre → es raíz misma
-    if (item.iditempadre === null) return null;
-    const parent = itemMap[item.iditempadre];
-    if (!parent) return null;
-    // Si el padre no tiene padre → el padre ES el grupo raíz
-    if (parent.iditempadre === null) return parent.id;
-    // Subir un nivel más
-    return getParentRootId(parent);
-  }
-
-  // Calcular totales por "nivel raíz" = suma de todos los items bajo ese padre raíz
-  // Para items cuyo padre directo es raíz (depth=1), el denominador = suma de todos sus hermanos directos
-  // Para items más profundos (depth>1), el denominador = suma de los hijos directos del mismo grupo raíz
-
-  // Agrupamos: parentRootId → anioId → total (suma de hijos directos del padre raíz)
-  const groupTotals: Record<number, Record<number, number>> = {};
-
-  // Suma todos los items cuyo padre directo es cada grupo raíz
+  // Ítems raíz en orden (iditempadre === null)
   const rootItems = items.filter(i => i.iditempadre === null);
-  for (const root of rootItems) {
-    groupTotals[root.id] = {};
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  // Hojas descendientes de un nodo contenedor
+  function leavesOf(parentId: number): ItemCat[] {
+    return items
+      .filter(i => i.iditempadre === parentId)
+      .flatMap(c => c.contenedor ? leavesOf(c.id) : [c]);
+  }
+
+  // Valor efectivo de un ítem para un año:
+  //   hoja → valor directo | contenedor → suma abs de sus hojas
+  function efectivo(item: ItemCat, anioId: number): number {
+    if (!item.contenedor) return valMap[item.id]?.[anioId] ?? 0;
+    return leavesOf(item.id).reduce((s, l) => s + Math.abs(valMap[l.id]?.[anioId] ?? 0), 0);
+  }
+
+  // Totales de la base configurada (suma de raíces seleccionadas)
+  const configTotals: Record<number, number> = {};
+  if (selectedRoots.length > 0) {
     for (const a of anios) {
-      // Suma hijos directos del grupo raíz (todos, incluyendo contenedores de primer nivel)
-      const directChildren = items.filter(i => i.iditempadre === root.id);
-      const t = directChildren.reduce((s, i) => s + Math.abs(valMap[i.id]?.[a.id] ?? 0), 0);
-      groupTotals[root.id][a.id] = t;
+      const ri_items = rootItems.filter(i => selectedRoots.includes(i.id));
+      configTotals[a.id] = ri_items.reduce((s, i) => s + Math.abs(efectivo(i, a.id)), 0);
     }
   }
 
-  // Para el caso SB donde 11, 13, 14... son directamente raíz (iditempadre === null),
-  // agrupamos todos esos items raíz por "bloque": 1x=Activos, 2x=Pasivos, 3x=Patrimonio, 4x=Gastos, 5x=Ingresos...
-  // El denominador de cada uno es la suma de todos en su mismo bloque
-  const rootNoParent = items.filter(i => i.iditempadre === null);
-  const rootBlockTotals: Record<string, Record<number, number>> = {};
-  for (const item of rootNoParent) {
-    const block = (item.codigo ?? '').charAt(0); // '1', '2', '3', etc.
-    if (!rootBlockTotals[block]) {
-      rootBlockTotals[block] = {};
-      for (const a of anios) {
-        const siblings = rootNoParent.filter(i => (i.codigo ?? '').startsWith(block));
-        rootBlockTotals[block][a.id] = siblings.reduce((s, i) => s + Math.abs(valMap[i.id]?.[a.id] ?? 0), 0);
-      }
-    }
-  }
+  const LABEL_W = 380, COL_W = 150, PCT_W = 90;
 
-  // Función que devuelve el denominador correcto para un item
-  function getDenominator(item: ItemCat, anioId: number): number {
-    if (item.iditempadre === null) {
-      // Item raíz sin padre → denominador = suma de su bloque (1x, 2x, etc.)
-      const block = (item.codigo ?? '').charAt(0);
-      return rootBlockTotals[block]?.[anioId] ?? 0;
-    }
-    const parentRootId = getParentRootId(item);
-    if (parentRootId !== null) {
-      return groupTotals[parentRootId]?.[anioId] ?? 0;
-    }
-    // Fallback: padre directo es raíz
-    const parent = itemMap[item.iditempadre!];
-    if (parent && parent.iditempadre === null) {
-      return groupTotals[parent.id]?.[anioId] ?? 0;
-    }
-    return 0;
-  }
+  // ── Renderizador MODO AUTOMÁTICO ─────────────────────────────────────────
+  // baseTotal: total del contenedor RAÍZ al que pertenece este ítem (para % relativo)
+  function renderAutoRow(item: ItemCat, baseTotal: Record<number, number> | null): React.ReactNode {
+    const depth = item.depth ?? 0;
+    const isContenedor = item.contenedor;
 
-  // Mostramos TODOS los items (incluyendo raíz sin padre si tienen valor, y todos los no-contenedores)
-  // Excluimos solo los contenedores intermedios (grupos que agrupan pero no tienen valor propio)
-  const displayItems = items.filter(i => !i.contenedor);
-  const LABEL_W = 300, COL_W = 150, PCT_W = 90;
+    // Total propio de este ítem
+    const myTotals: Record<number, number> = {};
+    for (const a of anios) myTotals[a.id] = efectivo(item, a.id);
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: '#64748b', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 7, padding: '6px 12px' }}>
-          ℹ️ <strong>Análisis Vertical:</strong> muestra qué porcentaje representa cada cuenta sobre el total de su grupo raíz (Activos, Pasivos, Patrimonio, etc.)
-        </div>
-        {/* Estado viene del selector global */}
-      </div>
-      <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
-        <div style={{ overflowX: 'auto' }}>
-          <div style={{ minWidth: LABEL_W + anios.length * (COL_W + PCT_W) }}>
-            <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
-              <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Cuenta</div>
-              {anios.map(a => (
-                <div key={a.id} style={{ display: 'flex' }}>
-                  <div style={{ width: COL_W, padding: '11px 12px', textAlign: 'right', fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>
-                  <div style={{ width: PCT_W, padding: '11px 10px', textAlign: 'right', fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase' }}>% Part.</div>
-                </div>
-              ))}
+    if (isContenedor) {
+      // Sólo mostrar si tiene datos
+      const hasData = anios.some(a => myTotals[a.id] !== 0);
+      if (!hasData) return null;
+
+      const bgColor = depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569';
+      // Si es raíz (depth=0): él mismo es la base (100%)
+      // Si es sub-contenedor: base viene del padre raíz
+      const myBase = depth === 0 ? myTotals : baseTotal;
+
+      return (
+        <div key={item.id}>
+          {/* Cabecera contenedor */}
+          <div style={{ display: 'flex', background: bgColor }}>
+            <div style={{
+              width: LABEL_W, minWidth: LABEL_W,
+              padding: `${depth === 0 ? 10 : 8}px 20px`,
+              paddingLeft: 20 + depth * 20,
+              display: 'flex', alignItems: 'center', gap: 7,
+            }}>
+              {depth > 0 && <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>↳</span>}
+              {item.codigo && (
+                <span style={{
+                  fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+                  background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)',
+                  padding: '1px 6px', borderRadius: 4, flexShrink: 0,
+                }}>{item.codigo}</span>
+              )}
+              <span style={{
+                fontSize: depth === 0 ? 12 : 11, fontWeight: 800, color: 'white',
+                textTransform: 'uppercase' as const, letterSpacing: '0.05em',
+              }}>{item.nombre}</span>
             </div>
-            {displayItems.map(item => {
-              const depth = item.depth ?? 0;
-              const isRootLevel = item.iditempadre === null;
+            {anios.map(a => {
+              const tot = myTotals[a.id] ?? 0;
+              const base = myBase ? (myBase[a.id] ?? 0) : tot;
+              const pct = depth === 0 ? 100 : (base > 0 ? (tot / base) * 100 : 0);
               return (
-                <div key={item.id} style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: isRootLevel ? '#fafbff' : 'white' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
-                  onMouseLeave={e => (e.currentTarget.style.background = isRootLevel ? '#fafbff' : 'white')}>
-                  <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px', paddingLeft: 20 + depth * 20, display: 'flex', alignItems: 'center', gap: 7 }}>
-                    {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
-                    <span style={{ fontSize: 13, color: '#1e293b', fontWeight: isRootLevel ? 600 : 400 }}>{item.nombre}</span>
+                <div key={a.id} style={{ display: 'flex' }}>
+                  <div style={{
+                    width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
+                    fontFamily: 'monospace', fontSize: 12, fontWeight: 800,
+                    color: tot !== 0 ? 'white' : 'rgba(255,255,255,0.25)',
+                  }}>{fmtNum(tot)}</div>
+                  <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
+                    {tot !== 0
+                      ? <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>
+                        {depth === 0 ? '100%' : `${pct.toFixed(1)}%`}
+                      </span>
+                      : <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>—</span>
+                    }
                   </div>
-                  {anios.map(a => {
-                    const val = valMap[item.id]?.[a.id] ?? 0;
-                    const total = getDenominator(item, a.id);
-                    const pct = total > 0 ? (Math.abs(val) / total) * 100 : 0;
-                    return (
-                      <div key={a.id} style={{ display: 'flex', alignItems: 'center' }}>
-                        <div style={{ width: COL_W, padding: '9px 12px', textAlign: 'right', fontFamily: 'monospace', fontSize: 13, color: val !== 0 ? '#0f172a' : '#cbd5e1', fontWeight: isRootLevel ? 600 : 400 }}>{fmtNum(val)}</div>
-                        <div style={{ width: PCT_W, padding: '9px 10px', textAlign: 'right' }}>
-                          {val !== 0 && pct > 0 ? (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', padding: '2px 7px', borderRadius: 5, border: '1px solid #c4b5fd', display: 'inline-block' }}>{pct.toFixed(1)}%</span>
-                          ) : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>}
-                        </div>
-                      </div>
-                    );
-                  })}
                 </div>
               );
             })}
           </div>
+          {/* Hijos recursivos — les pasamos la base raíz */}
+          {items
+            .filter(c => c.iditempadre === item.id)
+            .map(child => renderAutoRow(child, depth === 0 ? myTotals : myBase))
+          }
         </div>
+      );
+    }
+
+    // ── Hoja ──
+    return (
+      <div key={item.id}
+        style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: 'white' }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+      >
+        <div style={{
+          width: LABEL_W, minWidth: LABEL_W,
+          padding: '8px 20px', paddingLeft: 20 + depth * 20,
+          display: 'flex', alignItems: 'center', gap: 7,
+        }}>
+          {item.codigo && (
+            <span style={{
+              fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+              color: '#185FA5', background: '#E6F1FB',
+              padding: '1px 5px', borderRadius: 4, flexShrink: 0,
+            }}>{item.codigo}</span>
+          )}
+          <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
+        </div>
+        {anios.map(a => {
+          const val = valMap[item.id]?.[a.id] ?? 0;
+          const base = baseTotal ? (baseTotal[a.id] ?? 0) : 0;
+          // Si es hoja raíz suelta (depth=0, sin baseTotal): ella misma es 100%
+          const isRootLeaf = depth === 0 && !baseTotal;
+          const pct = isRootLeaf ? 100 : (base > 0 ? (Math.abs(val) / base) * 100 : 0);
+          return (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
+                fontFamily: 'monospace', fontSize: 13,
+                color: val !== 0 ? '#0f172a' : '#cbd5e1',
+              }}>{fmtNum(val)}</div>
+              <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
+                {val !== 0
+                  ? <span style={{
+                    fontSize: 11, fontWeight: 700, color: '#7c3aed',
+                    background: '#ede9fe', padding: '2px 7px', borderRadius: 5,
+                    border: '1px solid #c4b5fd', display: 'inline-block',
+                  }}>
+                    {isRootLeaf ? '100%' : (pct > 0 ? `${pct.toFixed(1)}%` : '—')}
+                  </span>
+                  : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>
+                }
+              </div>
+            </div>
+          );
+        })}
       </div>
+    );
+  }
+
+  // ── Renderizador MODO CONFIG ──────────────────────────────────────────────
+  // Todas las cuentas se calculan sobre configTotals (la base única elegida)
+  function renderConfigRow(item: ItemCat): React.ReactNode {
+    const depth = item.depth ?? 0;
+    const isContenedor = item.contenedor;
+
+    if (isContenedor) {
+      const bgColor = depth === 0 ? '#334155' : depth === 1 ? '#475569' : '#64748b';
+      return (
+        <div key={item.id}>
+          <div style={{ display: 'flex', background: bgColor }}>
+            <div style={{
+              width: LABEL_W, minWidth: LABEL_W,
+              padding: '8px 20px', paddingLeft: 20 + depth * 20,
+              display: 'flex', alignItems: 'center', gap: 7,
+              fontSize: 11, fontWeight: 700,
+              color: 'rgba(255,255,255,0.9)',
+              textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+            }}>
+              {depth > 0 && <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>↳</span>}
+              {item.codigo && (
+                <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>
+              )}
+              {item.nombre}
+            </div>
+            {anios.map(a => {
+              const tot = efectivo(item, a.id);
+              const base = configTotals[a.id] ?? 0;
+              const pct = base > 0 ? (Math.abs(tot) / base) * 100 : 0;
+              return (
+                <div key={a.id} style={{ display: 'flex' }}>
+                  <div style={{
+                    width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
+                    fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#94a3b8',
+                  }}>{fmtNum(tot)}</div>
+                  <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>
+                      {pct > 0 ? `${pct.toFixed(1)}%` : '—'}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {items.filter(c => c.iditempadre === item.id).map(child => renderConfigRow(child))}
+        </div>
+      );
+    }
+
+    // Hoja
+    return (
+      <div key={item.id}
+        style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: 'white' }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+      >
+        <div style={{
+          width: LABEL_W, minWidth: LABEL_W,
+          padding: '8px 20px', paddingLeft: 20 + depth * 20,
+          display: 'flex', alignItems: 'center', gap: 7,
+        }}>
+          {item.codigo && (
+            <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>
+          )}
+          <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
+        </div>
+        {anios.map(a => {
+          const val = valMap[item.id]?.[a.id] ?? 0;
+          const base = configTotals[a.id] ?? 0;
+          const pct = base > 0 ? (Math.abs(val) / base) * 100 : 0;
+          return (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center' }}>
+              <div style={{
+                width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
+                fontFamily: 'monospace', fontSize: 13,
+                color: val !== 0 ? '#0f172a' : '#cbd5e1',
+              }}>{fmtNum(val)}</div>
+              <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
+                {val !== 0 && pct > 0
+                  ? <span style={{
+                    fontSize: 11, fontWeight: 700, color: '#7c3aed',
+                    background: '#ede9fe', padding: '2px 7px', borderRadius: 5,
+                    border: '1px solid #c4b5fd', display: 'inline-block',
+                  }}>{pct.toFixed(1)}%</span>
+                  : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>
+                }
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  // ── RENDER PRINCIPAL ──────────────────────────────────────────────────────
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+      {/* Sub-tabs */}
+      <div style={{ display: 'flex', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+        {[
+          { key: 'auto', label: '📊 Automático', desc: 'Cada grupo = su propio 100%' },
+          { key: 'config', label: '⚙️ Configurar base', desc: 'Elige tú el 100% global' },
+        ].map(t => (
+          <button key={t.key} onClick={() => setSubTab(t.key as 'auto' | 'config')}
+            style={{
+              flex: 1, padding: '12px 20px', fontSize: 13, fontWeight: 600, border: 'none',
+              background: subTab === t.key ? '#f0f7ff' : 'white', cursor: 'pointer',
+              fontFamily: 'inherit',
+              borderBottom: subTab === t.key ? '2px solid #185FA5' : '2px solid transparent',
+              color: subTab === t.key ? '#185FA5' : '#64748b',
+              display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 2,
+              transition: 'all 0.15s',
+            }}>
+            <span>{t.label}</span>
+            <span style={{ fontSize: 10, fontWeight: 400, color: subTab === t.key ? '#185FA5' : '#94a3b8' }}>{t.desc}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ══════════════════════════ MODO AUTOMÁTICO ══════════════════════════ */}
+      {subTab === 'auto' && (
+        <>
+          <div style={{
+            fontSize: 12, color: '#64748b', background: '#f0f7ff',
+            border: '1px solid #b5d4f4', borderRadius: 7, padding: '8px 14px',
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            ℹ️ <span><strong>Automático:</strong> cada grupo raíz es su propio 100%. Los porcentajes muestran la participación de cada cuenta dentro de su bloque.</span>
+          </div>
+
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+            <div style={{ overflowX: 'auto' }}>
+              <div style={{ minWidth: LABEL_W + anios.length * (COL_W + PCT_W) }}>
+                {/* Header columnas */}
+                <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                  <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
+                  {anios.map(a => (
+                    <div key={a.id} style={{ display: 'flex' }}>
+                      <div style={{ width: COL_W, padding: '11px 12px', textAlign: 'right' as const, fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>
+                      <div style={{ width: PCT_W, padding: '11px 10px', textAlign: 'right' as const, fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase' as const }}>% Part.</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Árbol: todos los ítems raíz, cada uno con su propia base */}
+                {rootItems.map(ri => renderAutoRow(ri, null))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ══════════════════════════ MODO CONFIGURAR ══════════════════════════ */}
+      {subTab === 'config' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Panel selector de grupos */}
+          <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
+              Selecciona los grupos que forman el 100%
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
+              Puedes elegir <strong>uno o varios</strong> grupos. Su suma será el denominador único.
+              Ej: si eliges <strong>ACTIVOS</strong> (100) + <strong>PASIVOS</strong> (100) → total = 200,
+              y una cuenta de 20 representará el <strong>10%</strong>.
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+              {rootItems.map(ri => {
+                const isSelected = selectedRoots.includes(ri.id);
+                const lastAnio = anios[anios.length - 1];
+                const lastTotal = lastAnio ? Math.abs(efectivo(ri, lastAnio.id)) : 0;
+                const hasData = anios.some(a => efectivo(ri, a.id) !== 0);
+
+                return (
+                  <button key={ri.id}
+                    onClick={() => {
+                      if (!hasData) return;
+                      setSelectedRoots(prev =>
+                        isSelected ? prev.filter(id => id !== ri.id) : [...prev, ri.id]
+                      );
+                    }}
+                    style={{
+                      padding: '10px 14px', borderRadius: 10,
+                      border: `2px solid ${isSelected ? '#185FA5' : '#e2e8f0'}`,
+                      background: isSelected ? '#E6F1FB' : hasData ? 'white' : '#f8fafc',
+                      cursor: hasData ? 'pointer' : 'not-allowed',
+                      fontFamily: 'inherit', opacity: hasData ? 1 : 0.4,
+                      display: 'flex', flexDirection: 'column' as const,
+                      alignItems: 'flex-start', gap: 4,
+                      transition: 'all 0.15s', minWidth: 150,
+                      boxShadow: isSelected ? '0 0 0 3px rgba(24,95,165,0.12)' : 'none',
+                    }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
+                      {ri.codigo && (
+                        <span style={{
+                          fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
+                          color: isSelected ? '#185FA5' : '#64748b',
+                          background: isSelected ? '#dbeafe' : '#f1f5f9',
+                          padding: '1px 5px', borderRadius: 4,
+                        }}>{ri.codigo}</span>
+                      )}
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? '#185FA5' : '#475569', flex: 1, textAlign: 'left' as const }}>
+                        {ri.nombre.length > 22 ? ri.nombre.slice(0, 22) + '…' : ri.nombre}
+                      </span>
+                      {isSelected && (
+                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#185FA5', color: 'white', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
+                      {lastAnio ? `${lastAnio.valor}: ${lastTotal !== 0 ? fmtNum(lastTotal) : '—'}` : '—'}
+                    </span>
+                    {isSelected && (
+                      <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#dbeafe', padding: '1px 7px', borderRadius: 4 }}>
+                        en base
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Resumen base configurada */}
+            {selectedRoots.length > 0 && (
+              <div style={{
+                marginTop: 16, padding: '12px 14px',
+                background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 9,
+                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#185FA5' }}>
+                  Base = 100%:
+                </span>
+                {anios.map(a => (
+                  <span key={a.id} style={{
+                    fontSize: 12, fontWeight: 700, color: '#1e3a5f',
+                    background: 'white', border: '1px solid #b5d4f4',
+                    padding: '3px 10px', borderRadius: 6, fontFamily: 'monospace',
+                  }}>
+                    {a.valor}: {fmtNum(configTotals[a.id] ?? 0)}
+                  </span>
+                ))}
+                <button
+                  onClick={() => setSelectedRoots([])}
+                  style={{
+                    marginLeft: 'auto', fontSize: 11, color: '#dc2626',
+                    background: '#fef2f2', border: '1px solid #fca5a5',
+                    borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit',
+                  }}>
+                  ✕ Limpiar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Tabla resultado o placeholder */}
+          {selectedRoots.length === 0 ? (
+            <div style={{
+              padding: '56px 20px', textAlign: 'center', color: '#94a3b8',
+              background: 'white', border: '1px solid #e2e8f0', borderRadius: 12,
+            }}>
+              <div style={{ fontSize: 44, marginBottom: 12 }}>☝️</div>
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>
+                Selecciona al menos un grupo arriba
+              </p>
+              <p style={{ fontSize: 13, margin: 0, maxWidth: 360, marginInline: 'auto', lineHeight: 1.6 }}>
+                El valor total de los grupos que elijas formará el <strong>100%</strong>.
+                Puedes combinar varios grupos para un análisis cruzado.
+              </p>
+            </div>
+          ) : (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <div style={{ minWidth: LABEL_W + anios.length * (COL_W + PCT_W) }}>
+                  {/* Header */}
+                  <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
+                    {anios.map(a => (
+                      <div key={a.id} style={{ display: 'flex' }}>
+                        <div style={{ width: COL_W, padding: '11px 12px', textAlign: 'right' as const, fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>
+                        <div style={{ width: PCT_W, padding: '11px 10px', textAlign: 'right' as const, fontSize: 11, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase' as const }}>% del total</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Fila "BASE = 100%" */}
+                  <div style={{ display: 'flex', background: '#1e3a5f', borderBottom: '2px solid #185FA5' }}>
+                    <div style={{
+                      width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px',
+                      fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase' as const,
+                    }}>
+                      BASE ({rootItems.filter(ri => selectedRoots.includes(ri.id)).map(ri => ri.codigo ?? ri.nombre.slice(0, 12)).join(' + ')}) = 100%
+                    </div>
+                    {anios.map(a => (
+                      <div key={a.id} style={{ display: 'flex' }}>
+                        <div style={{ width: COL_W, padding: '9px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 12, fontWeight: 800, color: 'white' }}>
+                          {fmtNum(configTotals[a.id] ?? 0)}
+                        </div>
+                        <div style={{ width: PCT_W, padding: '9px 10px', textAlign: 'right' as const }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>100%</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Sólo los grupos seleccionados y sus descendientes */}
+                  {rootItems
+                    .filter(ri => selectedRoots.includes(ri.id))
+                    .map(ri => renderConfigRow(ri))
+                  }
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-/* ─── TAB: Análisis Horizontal — CON SELECTOR DE AÑOS ── */
+/* ─── TAB: Análisis Horizontal ── */
 function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
   const [items, setItems] = useState<ItemCat[]>([]);
   const [anios, setAnios] = useState<Anio[]>([]);
@@ -480,24 +927,101 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
     if (!estadoOverride) return;
     setLoading(true);
     loadEstadoData(estadoOverride).then(({ items, anios, valores }) => {
-      setItems(items); setValMap(buildValMap(valores));
-      setAnios(anios);
-      if (anios.length >= 2) {
-        setAnioBaseId(anios[0].id);
-        setAnioCompId(anios[1].id);
-      } else if (anios.length === 1) {
-        setAnioBaseId(anios[0].id);
-        setAnioCompId(null);
-      }
+      setItems(items); setValMap(buildValMap(valores)); setAnios(anios);
+      if (anios.length >= 2) { setAnioBaseId(anios[0].id); setAnioCompId(anios[1].id); }
+      else if (anios.length === 1) { setAnioBaseId(anios[0].id); setAnioCompId(null); }
       setLoading(false);
     });
   }, [estadoOverride?.id]);
 
-  const leafItems = items.filter(i => !i.contenedor);
+  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
+
   const anioBase = anios.find(a => a.id === anioBaseId);
   const anioComp = anios.find(a => a.id === anioCompId);
+  const rootItems = items.filter(i => i.iditempadre === null);
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
+  // Suma abs de hojas descendientes para un año
+  function leavesOf(parentId: number): ItemCat[] {
+    const children = items.filter(i => i.iditempadre === parentId);
+    return children.flatMap(c => c.contenedor ? leavesOf(c.id) : [c]);
+  }
+  function containerSum(item: ItemCat, anioId: number | null): number {
+    if (!anioId) return 0;
+    if (!item.contenedor) return valMap[item.id]?.[anioId] ?? 0;
+    return leavesOf(item.id).reduce((s, l) => s + Math.abs(valMap[l.id]?.[anioId] ?? 0), 0);
+  }
+
+  // Renderizar árbol horizontal recursivamente
+  function renderHRow(item: ItemCat): React.ReactNode {
+    const depth = item.depth ?? 0;
+    const isContenedor = item.contenedor;
+    const valA = containerSum(item, anioBaseId);
+    const valB = containerSum(item, anioCompId);
+
+    if (isContenedor) {
+      const diff = valB - valA;
+      const pct = valA !== 0 ? (diff / Math.abs(valA)) * 100 : null;
+      const isPos = diff > 0, isNeg = diff < 0;
+      const bgColor = depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569';
+
+      return (
+        <div key={item.id}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 120px 120px', padding: `${depth === 0 ? 9 : 7}px 20px`, paddingLeft: 20 + depth * 16, background: bgColor, gap: 8, alignItems: 'center' }}>
+            <div style={{ fontSize: depth === 0 ? 11 : 10, fontWeight: 800, color: 'white', textTransform: 'uppercase' as const, letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {depth > 0 && <span style={{ color: 'rgba(255,255,255,0.4)' }}>↳</span>}
+              {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
+              {item.nombre}
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'right' as const, color: '#94a3b8', fontWeight: 700 }}>{valA !== 0 ? fmtNum(valA) : '—'}</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 12, textAlign: 'right' as const, color: 'white', fontWeight: 700 }}>{valB !== 0 ? fmtNum(valB) : '—'}</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, textAlign: 'right' as const, color: isPos ? '#86efac' : isNeg ? '#fca5a5' : '#94a3b8', fontWeight: 700 }}>
+              {diff !== 0 ? `${isPos ? '+' : ''}${fmtNum(diff)}` : '—'}
+            </div>
+            <div style={{ textAlign: 'right' as const }}>
+              {pct !== null && diff !== 0 ? (
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: isPos ? 'rgba(134,239,172,0.2)' : 'rgba(252,165,165,0.2)', color: isPos ? '#86efac' : '#fca5a5', border: `1px solid ${isPos ? 'rgba(134,239,172,0.4)' : 'rgba(252,165,165,0.4)'}` }}>
+                  {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+                </span>
+              ) : <span style={{ color: '#475569', fontSize: 12 }}>—</span>}
+            </div>
+          </div>
+          {items.filter(c => c.iditempadre === item.id).map(child => renderHRow(child))}
+        </div>
+      );
+    }
+
+    // Hoja — ocultar si no tiene datos en ningún año
+    if (valA === 0 && valB === 0) return null;
+
+    const diff = valB - valA;
+    const pct = valA !== 0 ? (diff / Math.abs(valA)) * 100 : null;
+    const isPos = diff > 0, isNeg = diff < 0;
+
+    return (
+      <div key={item.id}
+        style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 120px 120px', padding: '9px 20px', borderBottom: '1px solid #f1f5f9', gap: 8, alignItems: 'center', background: 'white' }}
+        onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
+        onMouseLeave={e => (e.currentTarget.style.background = 'white')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingLeft: depth * 18 }}>
+          {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
+          <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
+        </div>
+        <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right' as const, color: '#64748b' }}>{fmtNum(valA)}</div>
+        <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right' as const, color: '#1e293b', fontWeight: valB !== 0 ? 600 : 400 }}>{fmtNum(valB)}</div>
+        <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right' as const, color: isPos ? '#16a34a' : isNeg ? '#dc2626' : '#94a3b8', fontWeight: diff !== 0 ? 600 : 400 }}>
+          {diff !== 0 ? `${isPos ? '+' : ''}${fmtNum(diff)}` : '—'}
+        </div>
+        <div style={{ textAlign: 'right' as const }}>
+          {pct !== null && diff !== 0 ? (
+            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: isPos ? '#dcfce7' : '#fee2e2', color: isPos ? '#15803d' : '#b91c1c', border: `1px solid ${isPos ? '#86efac' : '#fca5a5'}` }}>
+              {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+            </span>
+          ) : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -519,55 +1043,25 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
             {anios.map(a => <option key={a.id} value={a.id} disabled={a.id === anioBaseId}>{a.valor}</option>)}
           </select>
         </div>
-        {/* Estado viene del selector global */}
       </div>
 
       {anios.length < 2 ? (
         <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>Necesitas al menos 2 años</p>
-          <p style={{ fontSize: 13, margin: 0 }}>Agrega más períodos en el estado financiero desde "Mis análisis".</p>
+          <p style={{ fontSize: 13, margin: 0 }}>Agrega más períodos desde "Mis análisis".</p>
         </div>
       ) : (
         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
           <div style={{ overflowX: 'auto' }}>
             <div style={{ minWidth: 900 }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 120px 120px', padding: '11px 20px', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', gap: 8 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>Cuenta</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', textAlign: 'right', textTransform: 'uppercase' }}>{anioBase?.valor ?? '—'}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textAlign: 'right', textTransform: 'uppercase' }}>{anioComp?.valor ?? '—'}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'right', textTransform: 'uppercase' }}>Var. $</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'right', textTransform: 'uppercase' }}>Var. %</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', textAlign: 'right' as const, textTransform: 'uppercase' as const }}>{anioBase?.valor ?? '—'}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', textAlign: 'right' as const, textTransform: 'uppercase' as const }}>{anioComp?.valor ?? '—'}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'right' as const, textTransform: 'uppercase' as const }}>Var. $</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textAlign: 'right' as const, textTransform: 'uppercase' as const }}>Var. %</div>
               </div>
-              {leafItems.map(item => {
-                const valA = anioBaseId ? (valMap[item.id]?.[anioBaseId] ?? 0) : 0;
-                const valB = anioCompId ? (valMap[item.id]?.[anioCompId] ?? 0) : 0;
-                if (valA === 0 && valB === 0) return null;
-                const diff = valB - valA;
-                const pct = valA !== 0 ? (diff / Math.abs(valA)) * 100 : null;
-                const isPos = diff > 0, isNeg = diff < 0;
-                return (
-                  <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 120px 120px', padding: '10px 20px', borderBottom: '1px solid #f1f5f9', gap: 8, alignItems: 'center' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
-                      <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
-                    </div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right', color: '#64748b' }}>{fmtNum(valA)}</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right', color: '#1e293b', fontWeight: valB !== 0 ? 600 : 400 }}>{fmtNum(valB)}</div>
-                    <div style={{ fontFamily: 'monospace', fontSize: 13, textAlign: 'right', color: isPos ? '#16a34a' : isNeg ? '#dc2626' : '#94a3b8', fontWeight: diff !== 0 ? 600 : 400 }}>
-                      {diff !== 0 ? `${isPos ? '+' : ''}${fmtNum(diff)}` : '—'}
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      {pct !== null && diff !== 0 ? (
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: isPos ? '#dcfce7' : '#fee2e2', color: isPos ? '#15803d' : '#b91c1c', border: `1px solid ${isPos ? '#86efac' : '#fca5a5'}` }}>
-                          {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
-                        </span>
-                      ) : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>}
-                    </div>
-                  </div>
-                );
-              })}
+              {rootItems.map(ri => renderHRow(ri))}
             </div>
           </div>
         </div>
@@ -607,7 +1101,6 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
         <div style={{ fontSize: 12, color: '#64748b', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 7, padding: '6px 12px' }}>
           ℹ️ Mostrando fórmulas del estado financiero seleccionado. Créalas en <strong>"Mis análisis" → Ver análisis → panel de Fórmulas</strong>.
         </div>
-        {/* Estado viene del selector global */}
       </div>
 
       {formulas.length === 0 ? (
@@ -619,9 +1112,7 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 14 }}>
           {formulas.map(formula => {
-            // Evaluamos por año
             const resultados = anios.map(a => {
-              // Construir mapa plano itemId -> valor para este año
               const flatMap: Record<number, number> = {};
               for (const item of items) { flatMap[item.id] = valMap[item.id]?.[a.id] ?? 0; }
               const result = evaluateFormula(formula.codigo.tokens, flatMap);
@@ -647,14 +1138,12 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
                     {formula.descripcion && <p style={{ fontSize: 12, color: '#94a3b8', margin: '3px 0 0' }}>{formula.descripcion}</p>}
                   </div>
                 </div>
-                {/* Preview de la expresión */}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 7, padding: '7px 10px', minHeight: 32 }}>
                   {formula.codigo.tokens.map((t, i) => {
                     const cls = t.type === 'item' ? { bg: '#E6F1FB', color: '#185FA5' } : t.type === 'operator' ? { bg: '#fef9c3', color: '#854d0e' } : t.type === 'number' ? { bg: '#f0fdf4', color: '#15803d' } : { bg: 'transparent', color: '#94a3b8' };
                     return <span key={i} style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 600, padding: '2px 5px', borderRadius: 4, background: cls.bg, color: cls.color }}>{t.value}</span>;
                   })}
                 </div>
-                {/* Resultados por año */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {resultados.map(({ anio, result }) => (
                     <div key={anio} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '5px 10px', borderRadius: 6, background: '#f8fafc' }}>
@@ -778,13 +1267,11 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', gap: 8 }}>
                   {['Descripción', 'Prob.', 'Impacto', 'Nivel', 'Frec./Mes', 'Acción'].map(h => <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>)}
                 </div>
-                {/* Agrupado por categoría */}
                 {[...new Set(riesgos.map(r => r.categoria))].map(cat => {
                   const catRiesgos = riesgos.filter(r => r.categoria === cat);
                   const catColor = CAT_COLORS[cat];
                   return (
                     <div key={cat}>
-                      {/* Encabezado de grupo */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 16px', background: catColor ? `${catColor}10` : '#f8fafc', borderBottom: '1px solid #e2e8f0', borderTop: '1px solid #e2e8f0' }}>
                         <span style={{ width: 8, height: 8, borderRadius: '50%', background: catColor ?? '#94a3b8', flexShrink: 0 }} />
                         <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: catColor ?? '#64748b' }}>{cat}</span>
@@ -808,20 +1295,17 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                                 style={{ width: 70, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 7px', fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
                             </div>
                             <div style={{ display: 'flex', gap: 4 }}>
-                              {/* Botón editar */}
                               <button onClick={() => setEditRiesgo({ id: r.id, descripcion: r.descripcion, probabilidad: r.probabilidad, impacto: r.impacto, categoria: r.categoria })}
-                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #b5d4f4', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer' }}
-                                title="Editar">
+                                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #b5d4f4', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer' }}>
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
                               </button>
-                              {/* Botón eliminar */}
                               {confirmDel === r.id ? (
                                 <>
                                   <button onClick={() => handleDelete(r.id)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5, border: 'none', background: '#dc2626', color: 'white', cursor: 'pointer' }}>Sí</button>
                                   <button onClick={() => setConfirmDel(null)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 7px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', cursor: 'pointer' }}>No</button>
                                 </>
                               ) : (
-                                <button onClick={() => setConfirmDel(r.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #fca5a5', background: '#fee2e2', color: '#dc2626', cursor: 'pointer' }} title="Eliminar"><IconTrash size={12} /></button>
+                                <button onClick={() => setConfirmDel(r.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #fca5a5', background: '#fee2e2', color: '#dc2626', cursor: 'pointer' }}><IconTrash size={12} /></button>
                               )}
                             </div>
                           </div>
@@ -846,8 +1330,7 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                   {HEAT_DATA.map((row, ri) => row.map((val, ci) => {
                     const cnt = riesgos.filter(r => (5 - ri) === r.probabilidad && (ci + 1) === r.impacto).length;
                     return (
-                      <div key={`${ri}-${ci}`} style={{ width: 32, height: 32, borderRadius: 5, background: HEAT_COLORS[val], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: cnt > 0 ? 'rgba(0,0,0,0.6)' : 'transparent', transition: 'filter 0.15s', cursor: 'default' }}
-                        title={`Prob: ${5 - ri} × Imp: ${ci + 1} = ${(5 - ri) * (ci + 1)}`}>
+                      <div key={`${ri}-${ci}`} style={{ width: 32, height: 32, borderRadius: 5, background: HEAT_COLORS[val], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: cnt > 0 ? 'rgba(0,0,0,0.6)' : 'transparent', cursor: 'default' }}>
                         {cnt > 0 ? cnt : ''}
                       </div>
                     );
@@ -888,7 +1371,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
       </div>
       {showModal && <ModalNuevoRiesgo idempresa={empresa.id} categorias={allCats} onClose={() => setShowModal(false)} onCreated={r => { setRiesgos(prev => [...prev, r]); setShowModal(false); showToast('✓ Riesgo registrado'); }} />}
 
-      {/* Modal Editar Riesgo */}
       {editRiesgo && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: 28, width: 480, maxWidth: '95vw', boxShadow: '0 20px 60px rgba(0,0,0,0.18)' }}>
@@ -929,7 +1411,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                   </div>
                 </div>
               </div>
-              {/* Preview del nivel resultante */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: 12, color: '#64748b' }}>Nivel resultante:</span>
                 {(() => { const n = getNivel(editRiesgo.probabilidad, editRiesgo.impacto); const c = NIVEL_COLORS[n]; return <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 10px', borderRadius: 5, background: c.bg, color: c.color }}>{n}</span>; })()}
@@ -956,15 +1437,12 @@ export default function ModuloEstadoFinanciero() {
   const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [kpis, setKpis] = useState<KpiData | null>(null);
   const [loadingKpis, setLoadingKpis] = useState(false);
-  // ── Estado global seleccionado ──
   const [estados, setEstados] = useState<EstadoCuenta[]>([]);
   const [estadoSel, setEstadoSel] = useState<EstadoCuenta | null>(null);
   const [loadingEstados, setLoadingEstados] = useState(false);
-  // ── Exportación ──
   const [exportando, setExportando] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
 
-  // Cargar KPIs al cambiar empresa
   useEffect(() => {
     if (!empresa) return;
     setKpis(null); setLoadingKpis(true);
@@ -972,7 +1450,6 @@ export default function ModuloEstadoFinanciero() {
       .then(({ data }) => { setKpis(data); setLoadingKpis(false); });
   }, [empresa]);
 
-  // Cargar estados disponibles al cambiar empresa
   useEffect(() => {
     if (!empresa) { setEstados([]); setEstadoSel(null); return; }
     setLoadingEstados(true);
@@ -1014,15 +1491,14 @@ export default function ModuloEstadoFinanciero() {
 
   const MODULE_CARDS = [
     { icon: <IconBook />, color: '#185FA5', title: 'Catálogo de Cuentas', desc: 'Visualiza la estructura jerárquica completa del catálogo con todos sus valores por período.', stat1: { label: 'Cuentas', val: kpis?.total_cuentas.toString() ?? '…' }, stat2: { label: 'Estados', val: kpis?.total_estados.toString() ?? '…' }, tab: 'catalogo' },
-    { icon: <IconBarChart />, color: '#7c3aed', title: 'Análisis Vertical', desc: '¿Cuánto representa cada cuenta sobre el total de su grupo? Porcentaje de participación.', stat1: { label: 'Último período', val: kpis?.anios?.[kpis.anios.length - 1] ?? '…' }, stat2: { label: 'Estado activo', val: estadoSel?.nombre?.slice(0, 16) ?? '…' }, tab: 'vertical' },
-    { icon: <IconTrend />, color: '#16a34a', title: 'Análisis Horizontal', desc: 'Variación absoluta y porcentual entre dos períodos seleccionables.', stat1: { label: 'Períodos', val: kpis?.anios?.length.toString() ?? '…' }, stat2: { label: 'Años', val: kpis?.anios?.join(' · ') ?? '…' }, tab: 'horizontal' },
+    { icon: <IconBarChart />, color: '#7c3aed', title: 'Análisis Vertical', desc: 'Modo automático (cada grupo = 100%) o configura tú mismo la base del 100%.', stat1: { label: 'Último período', val: kpis?.anios?.[kpis.anios.length - 1] ?? '…' }, stat2: { label: 'Estado activo', val: estadoSel?.nombre?.slice(0, 16) ?? '…' }, tab: 'vertical' },
+    { icon: <IconTrend />, color: '#16a34a', title: 'Análisis Horizontal', desc: 'Variación absoluta y porcentual entre dos períodos, agrupado por bloque (Activos, Pasivos…).', stat1: { label: 'Períodos', val: kpis?.anios?.length.toString() ?? '…' }, stat2: { label: 'Años', val: kpis?.anios?.join(' · ') ?? '…' }, tab: 'horizontal' },
     { icon: <IconFormula />, color: '#d97706', title: 'Ratios Financieros', desc: 'Fórmulas personalizadas creadas en el estado financiero. Resultados calculados automáticamente.', stat1: { label: 'Fórmulas', val: '—' }, stat2: { label: 'Fuente', val: 'Mis análisis' }, tab: 'ratios' },
     { icon: <IconShield />, color: '#dc2626', title: 'Riesgo Operacional', desc: 'Registro mensual de riesgos, frecuencias, mapa de calor y matriz de probabilidad × impacto.', stat1: { label: 'Mes', val: new Date().toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }) }, stat2: { label: 'Categorías', val: '4+' }, tab: 'riesgo' },
   ];
 
   return (
     <div className={styles.root}>
-      {/* Loading overlay de exportación */}
       {exportando && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999 }}>
           <div style={{ background: 'white', borderRadius: 14, padding: '28px 36px', textAlign: 'center', boxShadow: '0 20px 60px rgba(0,0,0,0.2)', minWidth: 300 }}>
@@ -1045,7 +1521,6 @@ export default function ModuloEstadoFinanciero() {
           </div>
         </div>
         <div className={styles.headerActions}>
-          {/* Selector de estado global */}
           {empresa && estados.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 11, fontWeight: 600, color: '#64748b', whiteSpace: 'nowrap' }}>Estado:</span>
@@ -1112,7 +1587,6 @@ export default function ModuloEstadoFinanciero() {
                 ))}
               </div>
             )}
-            {/* Pasar estadoSel a todos los tabs para que usen el mismo estado */}
             {estadoSel && activeTab === 'catalogo' && <TabCatalogo empresa={empresa} estadoOverride={estadoSel} />}
             {estadoSel && activeTab === 'vertical' && <TabVertical empresa={empresa} estadoOverride={estadoSel} />}
             {estadoSel && activeTab === 'horizontal' && <TabHorizontal empresa={empresa} estadoOverride={estadoSel} />}
