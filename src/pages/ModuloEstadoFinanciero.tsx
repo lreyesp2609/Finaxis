@@ -420,7 +420,21 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
 //   Catálogo 13: contenedores raíz M1-M5 + hojas sueltas (56,47,48)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function TabVertical({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
+
+interface VerticalConfig {
+  mode: 'auto' | 'config';
+  selectedRoots: number[]; // ids de ítems raíz seleccionados como base
+}
+
+function TabVertical({
+  empresa,
+  estadoOverride,
+  onConfigChange,
+}: {
+  empresa: Empresa;
+  estadoOverride: EstadoCuenta;
+  onConfigChange?: (config: VerticalConfig) => void;
+}) {
   const [items, setItems] = useState<ItemCat[]>([]);
   const [anios, setAnios] = useState<Anio[]>([]);
   const [valMap, setValMap] = useState<Record<number, Record<number, number>>>({});
@@ -435,6 +449,11 @@ function TabVertical({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
       setItems(items); setAnios(anios); setValMap(buildValMap(valores)); setLoading(false);
     });
   }, [estadoOverride?.id]);
+
+  // ── Notificar al padre cada vez que cambia la config ──
+  useEffect(() => {
+    onConfigChange?.({ mode: subTab, selectedRoots });
+  }, [subTab, selectedRoots]);
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
 
@@ -1165,6 +1184,12 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
   );
 }
 
+// ─── PATCH PARA TabRiesgo en ModuloEstadoFinanciero.tsx ───
+// Reemplaza la función TabRiesgo completa con estos 3 fixes:
+// 1. Botones Importar + Registrar juntos
+// 2. Descripción visible completa (no truncada)
+// 3. Frec./Mes resumida visualmente en panel derecho
+
 /* ─── TAB: Riesgo Operacional ── */
 interface EditRiesgo { id: number; descripcion: string; probabilidad: number; impacto: number; categoria: string; }
 function TabRiesgo({ empresa }: { empresa: Empresa }) {
@@ -1177,6 +1202,9 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [editRiesgo, setEditRiesgo] = useState<EditRiesgo | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  // FIX 2: edición inline de descripción
+  const [editingDescId, setEditingDescId] = useState<number | null>(null);
+  const [editingDescVal, setEditingDescVal] = useState('');
   const CATEGORIAS_DEFAULT = ['Crédito', 'Liquidez', 'Operacional', 'Mercado'];
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
@@ -1219,6 +1247,15 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
     showToast('✓ Riesgo actualizado');
   };
 
+  // FIX 2: guardar descripción inline
+  const handleSaveDesc = async (id: number) => {
+    if (!editingDescVal.trim()) { setEditingDescId(null); return; }
+    await supabase.from('riesgo_operacional').update({ descripcion: editingDescVal.trim() }).eq('id', id);
+    setRiesgos(prev => prev.map(r => r.id === id ? { ...r, descripcion: editingDescVal.trim() } : r));
+    setEditingDescId(null);
+    showToast('✓ Descripción actualizada');
+  };
+
   const HEAT_DATA = Array(5).fill(null).map((_, probIdx) =>
     Array(5).fill(null).map((_, impIdx) => {
       const p = 5 - probIdx, imp = impIdx + 1, score = p * imp;
@@ -1235,26 +1272,41 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
     { label: 'Bajos', count: riesgos.filter(r => getNivel(r.probabilidad, r.impacto) === 'BAJO').length, color: '#16a34a' },
   ];
 
+  // FIX 3: top riesgos por frecuencia
+  const topFrecuencia = [...riesgos]
+    .filter(r => r.frecuencia_actual > 0)
+    .sort((a, b) => b.frecuencia_actual - a.frecuencia_actual)
+    .slice(0, 8);
+  const maxFrec = topFrecuencia[0]?.frecuencia_actual ?? 1;
+  const totalOcurrencias = riesgos.reduce((s, r) => s + r.frecuencia_actual, 0);
+
   return (
     <>
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: '#059669', color: 'white', padding: '11px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 16px rgba(5,150,105,.25)', zIndex: 2000 }}>{toast}</div>}
+
+      {/* FIX 1: Encabezado con botones juntos */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Riesgo Operacional · {empresa.nombre}</h3>
           <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>Mes actual: {new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
         </div>
-        <ImportarRiesgosExcel
-          idempresa={empresa.id}
-          userId={user!.id}
-          onImported={(n: number) => {
-            loadRiesgos();
-            showToast(`✓ ${n} riesgo(s) importados desde Excel`);
-          }}
-        />
-        <button onClick={() => setShowModal(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-          <IconPlus size={14} /> Registrar riesgo
-        </button>
+        {/* FIX 1: Ambos botones en el mismo grupo, sin separación */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <ImportarRiesgosExcel
+            idempresa={empresa.id}
+            userId={user!.id}
+            onImported={(n: number) => {
+              loadRiesgos();
+              showToast(`✓ ${n} riesgo(s) importados desde Excel`);
+            }}
+          />
+          <button onClick={() => setShowModal(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <IconPlus size={14} /> Registrar riesgo
+          </button>
+        </div>
       </div>
+
+      {/* Resumen KPIs */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {resumen.map(s => (
           <div key={s.label} style={{ flex: 1, minWidth: 80, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
@@ -1263,7 +1315,9 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
           </div>
         ))}
       </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>
+        {/* Tabla principal */}
         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
           {loading ? <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>
             : riesgos.length === 0 ? (
@@ -1274,6 +1328,7 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               </div>
             ) : (
               <>
+                {/* FIX 2: Cabecera de tabla — columna descripción sin ancho fijo */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', gap: 8 }}>
                   {['Descripción', 'Prob.', 'Impacto', 'Nivel', 'Frec./Mes', 'Acción'].map(h => <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>)}
                 </div>
@@ -1290,21 +1345,62 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                       {catRiesgos.map(r => {
                         const nivel = getNivel(r.probabilidad, r.impacto);
                         const nCol = NIVEL_COLORS[nivel] ?? NIVEL_COLORS.BAJO;
+                        const isEditingDesc = editingDescId === r.id;
                         return (
-                          <div key={r.id} style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '11px 16px', borderBottom: '1px solid #f1f5f9', alignItems: 'center', gap: 8 }}
+                          <div key={r.id}
+                            style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '10px 16px', borderBottom: '1px solid #f1f5f9', alignItems: 'start', gap: 8 }}
                             onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
-                            <div style={{ fontSize: 13, color: '#374151' }}>{r.descripcion}</div>
-                            <div style={{ textAlign: 'center' }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.probabilidad * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.probabilidad}</span></div>
-                            <div style={{ textAlign: 'center' }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.impacto * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.impacto}</span></div>
-                            <div><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, textTransform: 'uppercase', background: nCol.bg, color: nCol.color }}>{nivel}</span></div>
-                            <div>
+
+                            {/* FIX 2: Descripción — mostrar texto completo, editar al doble-clic */}
+                            <div style={{ minWidth: 0 }}>
+                              {isEditingDesc ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <textarea
+                                    autoFocus
+                                    value={editingDescVal}
+                                    onChange={e => setEditingDescVal(e.target.value)}
+                                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveDesc(r.id); } if (e.key === 'Escape') setEditingDescId(null); }}
+                                    style={{ width: '100%', border: '1.5px solid #185FA5', borderRadius: 6, padding: '5px 8px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box', minHeight: 52 }}
+                                  />
+                                  <div style={{ display: 'flex', gap: 4 }}>
+                                    <button onClick={() => handleSaveDesc(r.id)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, border: 'none', background: '#185FA5', color: 'white', cursor: 'pointer' }}>Guardar</button>
+                                    <button onClick={() => setEditingDescId(null)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', cursor: 'pointer' }}>Cancelar</button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  title="Doble clic para editar descripción"
+                                  onDoubleClick={() => { setEditingDescId(r.id); setEditingDescVal(r.descripcion); }}
+                                  style={{
+                                    fontSize: 13, color: '#374151', lineHeight: 1.5,
+                                    wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+                                    cursor: 'text',
+                                  }}
+                                >
+                                  {r.descripcion}
+                                </div>
+                              )}
+                            </div>
+
+                            <div style={{ textAlign: 'center', paddingTop: 2 }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.probabilidad * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.probabilidad}</span></div>
+                            <div style={{ textAlign: 'center', paddingTop: 2 }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.impacto * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.impacto}</span></div>
+                            <div style={{ paddingTop: 4 }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, textTransform: 'uppercase', background: nCol.bg, color: nCol.color }}>{nivel}</span></div>
+
+                            {/* FIX 3: Frec./Mes — input + badge visual */}
+                            <div style={{ paddingTop: 2 }}>
                               <input type="number" min={0} max={999} defaultValue={r.frecuencia_actual}
                                 onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v !== r.frecuencia_actual) handleFrequencyChange(r.id, v); }}
                                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt((e.target as HTMLInputElement).value); if (!isNaN(v)) handleFrequencyChange(r.id, v); } }}
-                                style={{ width: 70, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 7px', fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit' }} />
+                                style={{ width: 56, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 7px', fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit', display: 'block' }} />
+                              {r.frecuencia_actual > 0 && (
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, marginTop: 2, display: 'inline-block' }}>
+                                  {r.frecuencia_actual}×/mes
+                                </span>
+                              )}
                             </div>
-                            <div style={{ display: 'flex', gap: 4 }}>
+
+                            <div style={{ display: 'flex', gap: 4, paddingTop: 2 }}>
                               <button onClick={() => setEditRiesgo({ id: r.id, descripcion: r.descripcion, probabilidad: r.probabilidad, impacto: r.impacto, categoria: r.categoria })}
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #b5d4f4', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer' }}>
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
@@ -1327,8 +1423,10 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               </>
             )}
         </div>
-        {/* Heat map + categorías */}
+
+        {/* Panel derecho: Heat map + categorías + FIX 3: Frecuencias */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Heat map */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
             <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Mapa de Calor · Probabilidad × Impacto</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -1360,6 +1458,8 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               ))}
             </div>
           </div>
+
+          {/* Por Categoría */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
             <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Por Categoría</p>
             {allCats.map(cat => {
@@ -1377,8 +1477,67 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               );
             })}
           </div>
+
+          {/* FIX 3: Panel de Frecuencias — muestra top riesgos por ocurrencias este mes */}
+          {topFrecuencia.length > 0 && (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Frecuencias · Este Mes</p>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '2px 8px', borderRadius: 10 }}>
+                  {totalOcurrencias} total
+                </span>
+              </div>
+              {topFrecuencia.map(r => {
+                const nivel = getNivel(r.probabilidad, r.impacto);
+                const nCol = NIVEL_COLORS[nivel] ?? NIVEL_COLORS.BAJO;
+                const pct = maxFrec > 0 ? (r.frecuencia_actual / maxFrec) * 100 : 0;
+                return (
+                  <div key={r.id} style={{ marginBottom: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+                      <span style={{
+                        fontSize: 11, color: '#374151', flex: 1, minWidth: 0,
+                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        maxWidth: 220,
+                      }} title={r.descripcion}>
+                        {r.descripcion}
+                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: nCol.bg, color: nCol.color }}>{nivel}</span>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: '#185FA5', minWidth: 22, textAlign: 'right' }}>{r.frecuencia_actual}</span>
+                      </div>
+                    </div>
+                    <div style={{ height: 5, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${pct}%`,
+                        borderRadius: 3, transition: 'width 0.4s ease',
+                        background: nivel === 'CRÍTICO' ? '#be185d' : nivel === 'ALTO' ? '#dc2626' : nivel === 'MODERADO' ? '#d97706' : '#16a34a',
+                      }} />
+                    </div>
+                  </div>
+                );
+              })}
+              {riesgos.filter(r => r.frecuencia_actual === 0).length > 0 && (
+                <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span>⚪</span>
+                  {riesgos.filter(r => r.frecuencia_actual === 0).length} riesgo{riesgos.filter(r => r.frecuencia_actual === 0).length !== 1 ? 's' : ''} sin ocurrencias este mes
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Placeholder si aún no hay frecuencias */}
+          {topFrecuencia.length === 0 && riesgos.length > 0 && (
+            <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
+              <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Frecuencias · Este Mes</p>
+              <div style={{ textAlign: 'center', padding: '16px 8px', color: '#94a3b8' }}>
+                <div style={{ fontSize: 24, marginBottom: 6 }}>📊</div>
+                <p style={{ fontSize: 12, margin: 0 }}>Registra cuántas veces ocurrió cada riesgo este mes usando el campo <strong>Frec./Mes</strong> en la tabla.</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
       {showModal && <ModalNuevoRiesgo idempresa={empresa.id} categorias={allCats} onClose={() => setShowModal(false)} onCreated={r => { setRiesgos(prev => [...prev, r]); setShowModal(false); showToast('✓ Riesgo registrado'); }} />}
 
       {editRiesgo && (
@@ -1452,6 +1611,7 @@ export default function ModuloEstadoFinanciero() {
   const [loadingEstados, setLoadingEstados] = useState(false);
   const [exportando, setExportando] = useState(false);
   const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [verticalConfig, setVerticalConfig] = useState<VerticalConfig>({ mode: 'auto', selectedRoots: [] });
 
   useEffect(() => {
     if (!empresa) return;
@@ -1480,7 +1640,7 @@ export default function ModuloEstadoFinanciero() {
     setExportando(true);
     setExportProgress('Iniciando exportación...');
     try {
-      await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg));
+      await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg), verticalConfig);
     } catch (err) {
       console.error('Error exportando PDF:', err);
       alert('Error al generar el PDF. Verifica la consola.');
@@ -1541,9 +1701,18 @@ export default function ModuloEstadoFinanciero() {
             </div>
           )}
           {empresa && estadoSel && (
-            <button className={styles.btnOutline} onClick={handleExportar} disabled={exportando}
-              style={{ opacity: exportando ? 0.7 : 1, cursor: exportando ? 'not-allowed' : 'pointer' }}>
-              <IconDownload /> Exportar PDF
+            <button className={styles.btnOutline} onClick={handleExportar} disabled={exportando}>
+              <IconDownload />
+              Exportar PDF
+              {verticalConfig.mode === 'config' && verticalConfig.selectedRoots.length > 0 && (
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  background: '#185FA5', color: 'white',
+                  padding: '1px 5px', borderRadius: 8, marginLeft: 4
+                }}>
+                  V. configurado
+                </span>
+              )}
             </button>
           )}
           <EmpresaSelector user={user!.id} selected={empresa} onSelect={e => { setEmpresa(e); setActiveTab('overview'); }} />
@@ -1598,7 +1767,7 @@ export default function ModuloEstadoFinanciero() {
               </div>
             )}
             {estadoSel && activeTab === 'catalogo' && <TabCatalogo empresa={empresa} estadoOverride={estadoSel} />}
-            {estadoSel && activeTab === 'vertical' && <TabVertical empresa={empresa} estadoOverride={estadoSel} />}
+            {estadoSel && activeTab === 'vertical' && (<TabVertical empresa={empresa} estadoOverride={estadoSel} onConfigChange={setVerticalConfig} />)}
             {estadoSel && activeTab === 'horizontal' && <TabHorizontal empresa={empresa} estadoOverride={estadoSel} />}
             {estadoSel && activeTab === 'ratios' && <TabRatios empresa={empresa} estadoOverride={estadoSel} />}
             {activeTab === 'riesgo' && <TabRiesgo empresa={empresa} />}
