@@ -1,11 +1,5 @@
 /**
  * exportarPDF.ts  -  Finaxis - Estado Financiero
- * Reescritura completa:
- *   - Sin caracteres UTF-8 problematicos (flechas, tildes en simbolos) -> ASCII seguro
- *   - Catalogo refleja la jerarquia real (contenedores + hojas)
- *   - Analisis Vertical con modo auto y modo configurado correctos
- *   - Analisis Horizontal con toda la jerarquia
- *   - Logica de roots corregida para catálogos mixtos
  */
 
 import { supabase } from '../lib/supabaseClient';
@@ -53,7 +47,6 @@ const C = {
 
 /* --- Helpers --------------------------------------------------------------- */
 
-// Formatear numero sin caracteres especiales
 function fmtN(v: number): string {
     if (!v && v !== 0) return '-';
     if (v === 0) return '-';
@@ -62,7 +55,6 @@ function fmtN(v: number): string {
     }).format(v);
 }
 
-// Limpiar texto de caracteres no soportados por jsPDF helvetica
 function safe(text: string): string {
     return text
         .replace(/→/g, '->')
@@ -88,7 +80,6 @@ function getNivel(p: number, i: number): string {
     return s >= 16 ? 'CRITICO' : s >= 9 ? 'ALTO' : s >= 4 ? 'MODERADO' : 'BAJO';
 }
 
-// Construir arbol aplanado con depth
 function flattenTree(items: ItemCat[], parentId: number | null = null, depth = 0): ItemCat[] {
     const out: ItemCat[] = [];
     for (const item of items) {
@@ -109,7 +100,6 @@ function buildValMap(vals: ItemEstado[]): Record<number, Record<number, number>>
     return m;
 }
 
-// Sumar recursivamente todos los descendientes hoja de un nodo
 function sumLeafs(
     itemId: number,
     anioId: number,
@@ -175,7 +165,6 @@ export async function exportarPDF(
     const allItems: ItemCat[] = rawItems ?? [];
     const anios: Anio[] = rawAnios ?? [];
     const valMap = buildValMap(rawVals ?? []);
-    // Arbol aplanado en orden jerarquico (igual que la web)
     const flatItems = flattenTree(allItems);
     const riesgos: Riesgo[] = rData ?? [];
     const formulas: Formula[] = [
@@ -187,9 +176,7 @@ export async function exportarPDF(
         })),
     ];
 
-    // Nodos raiz (iditempadre === null) — incluye tanto contenedores como hojas
     const rootItems = allItems.filter(i => i.iditempadre === null);
-    // Cuentas hoja (no contenedor) para formulas
     const leafItems = allItems.filter(i => !i.contenedor);
 
     prog('Generando PDF...');
@@ -215,15 +202,12 @@ export async function exportarPDF(
         const darker: RGB = [Math.max(col[0] - 30, 0), Math.max(col[1] - 30, 0), Math.max(col[2] - 30, 0)];
         doc.setFillColor(...darker);
         doc.rect(PW - 50, 0, 50, 22, 'F');
-        // Numero seccion
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(6);
         doc.setTextColor(...C.white);
         doc.text(`SECCION ${num}`, ML + 4, 8);
-        // Titulo
         doc.setFontSize(13);
         doc.text(safe(title), ML + 4, 17);
-        // Sub titulo
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(6.5);
         doc.text(safe(sub), PW - MR - 2, 13, { align: 'right', maxWidth: 44 });
@@ -263,16 +247,6 @@ export async function exportarPDF(
         y += 11;
     };
 
-    /**
-     * Tabla generica
-     * headers: array de strings
-     * rows: array de arrays de strings
-     * colWidths: array de anchos (debe sumar CW)
-     * opts.hBg: color de cabecera
-     * opts.aRight: indices de columnas alineadas a la derecha
-     * opts.boldRows: indices de filas en negrita (para contenedores)
-     * opts.rowColors: mapa index->RGB para colorear filas especificas
-     */
     const drawTable = (
         headers: string[],
         rows: string[][],
@@ -298,7 +272,6 @@ export async function exportarPDF(
 
         checkY(rH + 2);
 
-        // Cabecera
         doc.setFillColor(...hBg);
         doc.rect(ML, y, CW, rH, 'F');
         doc.setFont('helvetica', 'bold');
@@ -344,7 +317,6 @@ export async function exportarPDF(
                 if (aRight.includes(ci)) {
                     doc.text(txt, cx + colWidths[ci] - 2, y + rH - 1.8, { align: 'right' });
                 } else {
-                    // Truncar si es muy largo — jsPDF no hace word-wrap en tablas
                     const maxChars = Math.floor(colWidths[ci] / 1.55);
                     const display = txt.length > maxChars ? txt.slice(0, maxChars - 1) + '.' : txt;
                     doc.text(display, cx + 2.5, y + rH - 1.8);
@@ -359,23 +331,18 @@ export async function exportarPDF(
     /* =========================================================================
        PORTADA
     ========================================================================= */
-    // Fondo navy full page
     doc.setFillColor(...C.navy);
     doc.rect(0, 0, PW, PH, 'F');
 
-    // Banda azul principal hasta y=235
     doc.setFillColor(...C.blue);
     doc.rect(0, 0, PW, 235, 'F');
 
-    // Panel derecho oscuro
     doc.setFillColor(...C.blueD);
     doc.rect(PW - 50, 0, 50, 235, 'F');
 
-    // Franja blanca superior
     doc.setFillColor(...C.white);
     doc.rect(0, 0, PW, 3.5, 'F');
 
-    // Logo triangulo
     doc.setFillColor(...C.white);
     doc.triangle(ML, 28, ML + 10, 14, ML + 20, 28, 'F');
     doc.setFont('helvetica', 'bold');
@@ -383,16 +350,13 @@ export async function exportarPDF(
     doc.setTextColor(...C.white);
     doc.text('FINAXIS', ML + 24, 25);
 
-    // Titulo principal
     doc.setFontSize(32);
     doc.text('ESTADO', ML, 55);
     doc.text('FINANCIERO', ML, 69);
 
-    // Linea divisora
     doc.setFillColor(255, 255, 255);
     doc.rect(ML, 74, CW - 52, 0.5, 'F');
 
-    // Datos empresa
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(17);
     doc.setTextColor(...C.white);
@@ -407,7 +371,6 @@ export async function exportarPDF(
         `Generado el ${new Date().toLocaleDateString('es-EC', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
     ), ML, 106);
 
-    // KPI cards
     const kpiData = [
         { label: 'PERIODOS', val: anios.length.toString(), sub: anios.map(a => a.valor).join(', ') },
         { label: 'CUENTAS', val: leafItems.length.toString(), sub: 'en catalogo activo' },
@@ -434,11 +397,9 @@ export async function exportarPDF(
         doc.text(safe(k.sub), kx + (kw - 3) / 2, 139, { align: 'center' });
     });
 
-    // Divisor
     doc.setFillColor(255, 255, 255);
     doc.rect(ML, 151, CW - 52, 0.4, 'F');
 
-    // Tabla de contenido
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     doc.setTextColor(179, 210, 240);
@@ -467,7 +428,6 @@ export async function exportarPDF(
         ty += 11;
     });
 
-    // Zona navy inferior
     doc.setFillColor(...C.navy);
     doc.rect(0, 235, PW, PH - 235, 'F');
     doc.setFillColor(...C.blue);
@@ -480,9 +440,6 @@ export async function exportarPDF(
 
     /* =========================================================================
        S1 - CATALOGO DE CUENTAS
-       Reproduce fielmente la jerarquia de la web:
-       - Contenedores = fila oscura (como la web)
-       - Hojas = fila normal con indentacion
     ========================================================================= */
     newPage();
     accentBar(C.blue);
@@ -493,13 +450,11 @@ export async function exportarPDF(
     );
 
     {
-        // Columnas: etiqueta ancha + una por año
         const labelW = anios.length <= 2 ? 105 : 85;
         const colW = (CW - labelW) / Math.max(anios.length, 1);
         const headers = ['Cuenta', ...anios.map(a => a.valor)];
         const widths = [labelW, ...anios.map(() => colW)];
 
-        // Construir filas desde el arbol aplanado
         const rows: string[][] = [];
         const boldRowIdxs: number[] = [];
         const bgMap: Record<number, RGB> = {};
@@ -515,7 +470,6 @@ export async function exportarPDF(
                 label,
                 ...anios.map(a => {
                     if (item.contenedor) {
-                        // Para contenedores mostrar la suma de sus hojas
                         const total = sumLeafs(item.id, a.id, allItems, valMap);
                         return total !== 0 ? fmtN(total) : '-';
                     }
@@ -528,7 +482,6 @@ export async function exportarPDF(
 
             if (item.contenedor) {
                 boldRowIdxs.push(ri);
-                // Degradar el azul oscuro segun profundidad
                 const shade = Math.min(depth, 3);
                 const base = 30 + shade * 15;
                 bgMap[ri] = [base, base + 20, base + 60] as RGB;
@@ -547,6 +500,7 @@ export async function exportarPDF(
 
     /* =========================================================================
        S2 - ANALISIS VERTICAL
+       CAMBIO: todos los porcentajes usan .toFixed(2)
     ========================================================================= */
     newPage();
     accentBar(C.purple);
@@ -565,11 +519,9 @@ export async function exportarPDF(
     );
 
     if (isConfigMode) {
-        /* --- Modo configurado: reproducir lo que el usuario selecciono --- */
         const cfgIds = verticalConfig!.selectedRoots;
         const cfgItems = allItems.filter(i => cfgIds.includes(i.id));
 
-        // Total de la base por año
         const cfgTotals: Record<number, number> = {};
         for (const a of anios) {
             cfgTotals[a.id] = cfgItems.reduce(
@@ -585,7 +537,6 @@ export async function exportarPDF(
 
         sectionTitle('Grupos seleccionados como base', C.purple);
 
-        // Tabla resumen de la base
         {
             const lW = 90;
             const cW = (CW - lW) / Math.max(anios.length, 1);
@@ -610,7 +561,6 @@ export async function exportarPDF(
 
         sectionTitle('Participacion de cada grupo sobre la base', C.purple);
 
-        // Tabla detalle con %
         {
             const lW = anios.length <= 2 ? 80 : 65;
             const cW = (CW - lW) / (anios.length * 2);
@@ -623,18 +573,17 @@ export async function exportarPDF(
             for (const root of cfgItems) {
                 const ri = detailRows.length;
                 bRows.push(ri);
-                const totLeafs = Math.abs(sumLeafs(root.id, anios[0]?.id ?? 0, allItems, valMap));
                 detailRows.push([
                     safe(`> ${root.codigo ? `[${root.codigo}] ` : ''}${root.nombre}`),
                     ...anios.flatMap(a => {
                         const tot = Math.abs(sumLeafs(root.id, a.id, allItems, valMap));
                         const base = cfgTotals[a.id] ?? 0;
-                        const pct = base > 0 ? (tot / base * 100).toFixed(1) + '%' : '-';
+                        // CAMBIO: .toFixed(2)
+                        const pct = base > 0 ? (tot / base * 100).toFixed(2) + '%' : '-';
                         return [fmtN(tot), pct];
                     }),
                 ]);
 
-                // Hijos directos no-contenedor
                 allItems
                     .filter(i => i.iditempadre === root.id && !i.contenedor)
                     .forEach(child => {
@@ -643,7 +592,8 @@ export async function exportarPDF(
                             ...anios.flatMap(a => {
                                 const val = valMap[child.id]?.[a.id] ?? 0;
                                 const base = cfgTotals[a.id] ?? 0;
-                                const pct = base > 0 ? (Math.abs(val) / base * 100).toFixed(1) + '%' : '-';
+                                // CAMBIO: .toFixed(2)
+                                const pct = base > 0 ? (Math.abs(val) / base * 100).toFixed(2) + '%' : '-';
                                 return [fmtN(val), pct];
                             }),
                         ]);
@@ -659,7 +609,6 @@ export async function exportarPDF(
         }
 
     } else {
-        /* --- Modo automatico: cada nodo raiz = su propio 100% --- */
         pill(
             `Modo automatico: cada grupo raiz es su propio 100%. Los % muestran participacion dentro de su bloque.`,
             [237, 233, 254], C.purple,
@@ -667,7 +616,6 @@ export async function exportarPDF(
 
         sectionTitle('Totales por grupo raiz', C.purple);
 
-        // Tabla de totales de nodos raiz
         {
             const lW = 90;
             const cW = (CW - lW - 20) / Math.max(anios.length, 1);
@@ -676,8 +624,9 @@ export async function exportarPDF(
 
             const rows = rootItems.map(root => {
                 const tots = anios.map(a => sumLeafs(root.id, a.id, allItems, valMap));
+                // CAMBIO: .toFixed(2)
                 const vp = tots.length >= 2 && tots[0] !== 0
-                    ? `${((tots[tots.length - 1] - tots[0]) / Math.abs(tots[0]) * 100).toFixed(1)}%`
+                    ? `${((tots[tots.length - 1] - tots[0]) / Math.abs(tots[0]) * 100).toFixed(2)}%`
                     : '-';
                 return [
                     safe(`${root.codigo ? `[${root.codigo}] ` : ''}${root.nombre}`),
@@ -685,11 +634,6 @@ export async function exportarPDF(
                     vp,
                 ];
             }).filter(r => r.slice(1, -1).some(v => v !== '-'));
-
-            const bRows = rows.map((_, i) => i).filter(i => {
-                const root = rootItems[i];
-                return root?.contenedor;
-            });
 
             drawTable(hh, rows, ww, {
                 hBg: C.purple,
@@ -699,7 +643,6 @@ export async function exportarPDF(
 
         sectionTitle('Participacion porcentual', C.purple);
 
-        // Una sub-seccion por cada nodo raiz que tiene valor
         for (const root of rootItems) {
             const rootTotal: Record<number, number> = {};
             for (const a of anios) {
@@ -716,7 +659,6 @@ export async function exportarPDF(
             doc.text(rootLabel, ML, y);
             y += 7;
 
-            // Hijos del root (o el root mismo si no tiene hijos)
             const children = allItems.filter(i => i.iditempadre === root.id);
             const items_to_show = children.length > 0 ? children : [root];
 
@@ -739,7 +681,8 @@ export async function exportarPDF(
                             ? Math.abs(sumLeafs(item.id, a.id, allItems, valMap))
                             : (valMap[item.id]?.[a.id] ?? 0);
                         const base = rootTotal[a.id] ?? 0;
-                        const pct = base > 0 ? (Math.abs(val) / base * 100).toFixed(1) + '%' : '-';
+                        // CAMBIO: .toFixed(2)
+                        const pct = base > 0 ? (Math.abs(val) / base * 100).toFixed(2) + '%' : '-';
                         return [fmtN(val), pct];
                     }),
                 ]);
@@ -758,6 +701,7 @@ export async function exportarPDF(
 
     /* =========================================================================
        S3 - ANALISIS HORIZONTAL
+       CAMBIO: porcentajes usan .toFixed(2)
     ========================================================================= */
     newPage();
     accentBar(C.green);
@@ -784,7 +728,6 @@ export async function exportarPDF(
             const bgMap: Record<number, RGB> = {};
             const fgMap: Record<number, RGB> = {};
 
-            // Recorrer el arbol aplanado igual que la web
             flatItems.forEach(item => {
                 const depth = item.depth ?? 0;
                 const indent = '  '.repeat(Math.min(depth, 4));
@@ -800,7 +743,8 @@ export async function exportarPDF(
                 if (vA === 0 && vC === 0) return;
 
                 const diff = vC - vA;
-                const pct = vA !== 0 ? (diff / Math.abs(vA) * 100).toFixed(1) + '%' : '-';
+                // CAMBIO: .toFixed(2)
+                const pct = vA !== 0 ? (diff / Math.abs(vA) * 100).toFixed(2) + '%' : '-';
                 const varStr = diff !== 0 ? (diff > 0 ? '+' : '') + fmtN(diff) : '-';
 
                 const ri = rows.length;
@@ -816,10 +760,8 @@ export async function exportarPDF(
                     bgMap[ri] = [base, base + 20, base + 55] as RGB;
                     fgMap[ri] = C.white;
                 } else if (diff > 0) {
-                    // Fila positiva: fondo verde muy suave
                     bgMap[ri] = [240, 253, 244] as RGB;
                 } else if (diff < 0) {
-                    // Fila negativa: fondo rojo muy suave
                     bgMap[ri] = [254, 242, 242] as RGB;
                 }
             });
@@ -866,7 +808,6 @@ export async function exportarPDF(
 
         drawTable(hh, fRows, ww, { hBg: C.amber, aRight: anios.map((_, i) => i + 2) });
 
-        // Expresiones
         y += 2;
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(7.5);
@@ -905,7 +846,6 @@ export async function exportarPDF(
         C.red,
     );
 
-    // KPI cards de riesgo
     const rKpis = [
         { l: 'CRITICOS', c: riesgos.filter(r => getNivel(r.probabilidad, r.impacto) === 'CRITICO').length, col: [140, 10, 10] as RGB },
         { l: 'ALTOS', c: riesgos.filter(r => getNivel(r.probabilidad, r.impacto) === 'ALTO').length, col: C.red },
@@ -938,15 +878,12 @@ export async function exportarPDF(
             const catR = riesgos.filter(r => r.categoria === cat);
             sectionTitle(`Categoria: ${safe(cat)}`, C.red);
 
-            // Tabla de riesgos con descripcion multilinea
-            // Columnas: Descripcion (ancha) | P | I | Nivel | Frec.
             const dW = CW - 10 - 10 - 28 - 18;
             const colW5 = [dW, 10, 10, 28, 18];
             const hdrs5 = ['Descripcion', 'P', 'I', 'Nivel', 'Frec./Mes'];
-            const lineH = 4.5; // altura por linea de texto
-            const cellPadV = 2.5; // padding vertical por encima y debajo del texto
+            const lineH = 4.5;
+            const cellPadV = 2.5;
 
-            // Cabecera de la tabla
             checkY(8);
             doc.setFillColor(...C.red);
             doc.rect(ML, y, CW, 7, 'F');
@@ -966,7 +903,6 @@ export async function exportarPDF(
                 const nivelBg: RGB = nivel === 'CRITICO' ? [252, 231, 243] : nivel === 'ALTO' ? [254, 226, 226] : nivel === 'MODERADO' ? [254, 249, 195] : [220, 252, 231];
                 const nivelFg: RGB = nivel === 'CRITICO' ? [190, 24, 93] : nivel === 'ALTO' ? [185, 28, 28] : nivel === 'MODERADO' ? [133, 77, 6] : [22, 101, 52];
 
-                // Calcular cuantas lineas necesita la descripcion
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(5.8);
                 const descLines: string[] = doc.splitTextToSize(safe(r.descripcion), dW - 5);
@@ -974,10 +910,8 @@ export async function exportarPDF(
 
                 checkY(rowH);
 
-                // Fondo de la fila
                 doc.setFillColor(...(ri % 2 === 0 ? nivelBg : [255, 255, 255] as RGB));
                 doc.rect(ML, y, CW, rowH, 'F');
-                // Borde nivel para filas pares
                 if (ri % 2 === 0) {
                     doc.setFillColor(...nivelBg);
                     doc.rect(ML, y, CW, rowH, 'F');
@@ -985,7 +919,6 @@ export async function exportarPDF(
                 doc.setDrawColor(...C.silver);
                 doc.line(ML, y + rowH, ML + CW, y + rowH);
 
-                // Descripcion multilinea
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(5.8);
                 doc.setTextColor(...C.dark);
@@ -993,7 +926,6 @@ export async function exportarPDF(
                     doc.text(line, ML + 2.5, y + cellPadV + lineH * li + lineH - 1);
                 });
 
-                // P — colores RGB fijos segun valor (jsPDF no acepta HSL)
                 const midY = y + rowH / 2 + 2;
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(7);
@@ -1001,12 +933,10 @@ export async function exportarPDF(
                 doc.setTextColor(...probCol);
                 doc.text(r.probabilidad.toString(), ML + dW + 10 / 2, midY, { align: 'center' });
 
-                // I
                 const impCol: RGB = r.impacto >= 4 ? [185, 28, 28] : r.impacto === 3 ? [133, 77, 6] : [22, 101, 52];
                 doc.setTextColor(...impCol);
                 doc.text(r.impacto.toString(), ML + dW + 10 + 10 / 2, midY, { align: 'center' });
 
-                // Nivel badge
                 doc.setFillColor(...nivelBg);
                 doc.roundedRect(ML + dW + 20 + 1, y + rowH / 2 - 3, 26, 6, 1, 1, 'F');
                 doc.setFont('helvetica', 'bold');
@@ -1014,7 +944,6 @@ export async function exportarPDF(
                 doc.setTextColor(...nivelFg);
                 doc.text(nivel, ML + dW + 20 + 14, midY, { align: 'center' });
 
-                // Frec
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(7);
                 if (r.frecuencia_actual > 0) doc.setTextColor(...C.blue);
@@ -1044,7 +973,6 @@ export async function exportarPDF(
         const cs = 13, offX = 24;
         const hx = ML, hy = y;
 
-        // Etiquetas eje Y
         ['C.seguro', 'Probable', 'Posible', 'Improbable', 'Raro'].forEach((l, pi) => {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(5.5);
@@ -1052,7 +980,6 @@ export async function exportarPDF(
             doc.text(l, hx + offX - 2, hy + pi * (cs + 2) + cs / 2 + 2, { align: 'right' });
         });
 
-        // Celdas del mapa
         for (let pi = 0; pi < 5; pi++) {
             for (let ii = 0; ii < 5; ii++) {
                 const p = 5 - pi, imp = ii + 1, score = p * imp;
@@ -1071,7 +998,6 @@ export async function exportarPDF(
             }
         }
 
-        // Eje X
         for (let ii = 0; ii < 5; ii++) {
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(6);
@@ -1080,7 +1006,6 @@ export async function exportarPDF(
         }
         doc.text('IMPACTO ->', hx + offX, hy + 5 * (cs + 2) + 9);
 
-        // Leyenda
         const legX = hx + offX + 5 * (cs + 2) + 10;
         [
             { c: '#bbf7d0', l: 'Bajo (1-3)' },
@@ -1099,7 +1024,6 @@ export async function exportarPDF(
 
         y = hy + 5 * (cs + 2) + 14;
 
-        // Barras de distribucion por categoria
         y += 4;
         checkY(10 + cats.length * 9);
         doc.setFont('helvetica', 'bold');
@@ -1109,10 +1033,9 @@ export async function exportarPDF(
         y += 7;
 
         cats.forEach(cat => {
-            // Calcular altura de fila segun lineas de texto del nombre de categoria
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(6);
-            const catMaxW = 52; // mm disponibles antes de la barra
+            const catMaxW = 52;
             const catLines: string[] = doc.splitTextToSize(safe(cat), catMaxW);
             const catLineH = 4;
             const catPadV = 2;
@@ -1148,7 +1071,6 @@ export async function exportarPDF(
             y += catRowH;
         });
 
-        // Top frecuencias — descripcion completa con splitTextToSize
         const topFrec = [...riesgos]
             .filter(r => r.frecuencia_actual > 0)
             .sort((a, b) => b.frecuencia_actual - a.frecuencia_actual)
@@ -1164,7 +1086,6 @@ export async function exportarPDF(
             doc.text(`Frecuencias este mes (total: ${totalFrec} ocurrencias):`, ML, y);
             y += 8;
 
-            // Cabecera tabla frecuencias
             const fDescW = CW - 22 - 20;
             checkY(7);
             doc.setFillColor(...C.red);
@@ -1182,9 +1103,7 @@ export async function exportarPDF(
                 const nivel = getNivel(r.probabilidad, r.impacto);
                 const nivelColor: RGB = nivel === 'CRITICO' ? [190, 24, 93] : nivel === 'ALTO' ? [185, 28, 28] : nivel === 'MODERADO' ? [180, 100, 6] : [22, 163, 74];
                 const nivelBg: RGB = nivel === 'CRITICO' ? [252, 231, 243] : nivel === 'ALTO' ? [254, 226, 226] : nivel === 'MODERADO' ? [254, 249, 195] : [220, 252, 231];
-                const pctF = maxF > 0 ? r.frecuencia_actual / maxF : 0;
 
-                // Calcular lineas necesarias
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(5.8);
                 const descLines: string[] = doc.splitTextToSize(safe(r.descripcion), fDescW - 4);
@@ -1194,13 +1113,11 @@ export async function exportarPDF(
 
                 checkY(rowH);
 
-                // Fondo fila — siempre el color del nivel del riesgo
                 doc.setFillColor(...nivelBg);
                 doc.rect(ML, y, CW, rowH, 'F');
                 doc.setDrawColor(...C.silver);
                 doc.line(ML, y + rowH, ML + CW, y + rowH);
 
-                // Descripcion completa multilinea
                 doc.setFont('helvetica', 'normal');
                 doc.setFontSize(5.8);
                 doc.setTextColor(...C.dark);
@@ -1210,7 +1127,6 @@ export async function exportarPDF(
 
                 const midRowY = y + rowH / 2 + 2;
 
-                // Badge nivel
                 doc.setFillColor(...nivelBg);
                 doc.roundedRect(ML + fDescW + 1, y + rowH / 2 - 3, 20, 6, 1, 1, 'F');
                 doc.setFont('helvetica', 'bold');
@@ -1218,7 +1134,6 @@ export async function exportarPDF(
                 doc.setTextColor(...nivelColor);
                 doc.text(nivel, ML + fDescW + 11, midRowY, { align: 'center' });
 
-                // Numero frecuencia
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(8);
                 doc.setTextColor(...nivelColor);
@@ -1230,7 +1145,7 @@ export async function exportarPDF(
     }
 
     /* =========================================================================
-       FOOTERS en todas las paginas
+       FOOTERS
     ========================================================================= */
     const secColors: RGB[] = [C.navy, C.blue, C.purple, C.green, C.amber, C.red];
     const totalPages = doc.getNumberOfPages();
@@ -1240,7 +1155,6 @@ export async function exportarPDF(
         footer(i, totalPages, secColors[Math.min(i - 1, secColors.length - 1)]);
     }
 
-    /* --- Guardar ----------------------------------------------------------- */
     const filename = [
         'EstadoFinanciero',
         empresa.nombre.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, ''),

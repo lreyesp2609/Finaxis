@@ -50,17 +50,6 @@ const CAT_COLORS: Record<string, string> = {
   Crédito: '#1d4ed8', Liquidez: '#6d28d9', Operacional: '#854d0e', Mercado: '#15803d',
 };
 
-// Mapa de nombres de bloques por primer dígito del código
-const BLOCK_NAMES: Record<string, string> = {
-  '1': 'ACTIVOS',
-  '2': 'PASIVOS',
-  '3': 'PATRIMONIO',
-  '4': 'GASTOS',
-  '5': 'INGRESOS',
-  '6': 'CONTINGENTES',
-  '7': 'CUENTAS DE ORDEN',
-};
-
 function getNivel(prob: number, impacto: number): string {
   const score = prob * impacto;
   if (score >= 16) return 'CRÍTICO';
@@ -96,7 +85,6 @@ function evaluateFormula(tokens: FormulaToken[], valMap: Record<number, number>)
   catch { return null; }
 }
 
-/* ─── Shared: load estado data ── */
 async function loadEstadoData(estadoSel: EstadoCuenta) {
   const [{ data: rawItems }, { data: rawAnios }, { data: rawValores }] = await Promise.all([
     supabase.from('itemcat').select('id, nombre, codigo, contenedor, iditempadre').eq('idcatalogo', estadoSel.idcatalogo).order('id'),
@@ -116,7 +104,52 @@ function buildValMap(valores: ItemEstado[]): Record<number, Record<number, numbe
   return m;
 }
 
-/* ─── Estado selector row ── */
+/* ─── Slider con ticks 1-5 ── */
+function SliderConTicks({ value, onChange, accentColor, labels }: {
+  value: number;
+  onChange: (v: number) => void;
+  accentColor: string;
+  labels: string[];
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <input
+        type="range"
+        min={1}
+        max={5}
+        step={1}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        style={{ width: '100%', accentColor }}
+      />
+      {/* Ticks 1-5 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 2, paddingRight: 2 }}>
+        {[1, 2, 3, 4, 5].map(n => (
+          <span
+            key={n}
+            onClick={() => onChange(n)}
+            style={{
+              fontSize: 11,
+              fontWeight: value === n ? 700 : 400,
+              color: value === n ? accentColor : '#94a3b8',
+              cursor: 'pointer',
+              minWidth: 14,
+              textAlign: 'center',
+              userSelect: 'none',
+            }}
+          >
+            {n}
+          </span>
+        ))}
+      </div>
+      {/* Etiqueta del valor seleccionado */}
+      <div style={{ fontSize: 11, color: '#64748b', textAlign: 'center' }}>
+        <span style={{ fontWeight: 600, color: accentColor }}>{labels[value - 1]}</span>
+      </div>
+    </div>
+  );
+}
+
 function EstadoSelectorRow({ estados, sel, onSelect }: { estados: EstadoCuenta[]; sel: EstadoCuenta | null; onSelect: (e: EstadoCuenta) => void }) {
   if (estados.length <= 1) return null;
   return (
@@ -190,7 +223,12 @@ function EmpresaSelector({ user, selected, onSelect }: { user: string; selected:
 }
 
 /* ─── Modal Nuevo Riesgo ── */
-function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: { idempresa: number; categorias: string[]; onClose: () => void; onCreated: (r: Riesgo) => void; }) {
+function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: {
+  idempresa: number;
+  categorias: string[];
+  onClose: () => void;
+  onCreated: (r: Riesgo) => void;
+}) {
   const [categoria, setCategoria] = useState(categorias[0] ?? 'Operacional');
   const [categoriaCustom, setCategoriaCustom] = useState('');
   const [descripcion, setDescripcion] = useState('');
@@ -198,15 +236,21 @@ function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: { idemp
   const [impacto, setImpacto] = useState(2);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [descError, setDescError] = useState(false);
   const { user } = useAuth();
+
   const catFinal = categoria === '__custom__' ? categoriaCustom.trim() : categoria;
   const LABELS_PROB = ['Raro', 'Improbable', 'Posible', 'Probable', 'Casi seguro'];
   const LABELS_IMP = ['Mínimo', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
 
   const handleSave = async () => {
-    if (!catFinal || !descripcion.trim()) { setError('Completa todos los campos'); return; }
-    setSaving(true); setError(null);
-    const { data, error: err } = await supabase.from('riesgo_operacional').insert({ idempresa, categoria: catFinal, descripcion: descripcion.trim(), probabilidad, impacto, user: user!.id }).select('*').single();
+    if (!catFinal) { setError('Selecciona una categoría'); return; }
+    if (!descripcion.trim()) { setDescError(true); setError(null); return; }
+    setSaving(true); setError(null); setDescError(false);
+    const { data, error: err } = await supabase
+      .from('riesgo_operacional')
+      .insert({ idempresa, categoria: catFinal, descripcion: descripcion.trim(), probabilidad, impacto, user: user!.id })
+      .select('*').single();
     setSaving(false);
     if (err || !data) { setError('Error: ' + (err?.message ?? '')); return; }
     onCreated({ ...data, frecuencia_actual: 0, mes_actual: new Date().toISOString().slice(0, 7) });
@@ -216,47 +260,142 @@ function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: { idemp
   const nCol = NIVEL_COLORS[nivel];
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.46)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }} onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.46)', backdropFilter: 'blur(3px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}
+    >
       <div style={{ background: 'white', borderRadius: 14, boxShadow: '0 20px 60px rgba(15,23,42,.2)', width: '100%', maxWidth: 520, overflow: 'hidden' }}>
+
+        {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px 14px', borderBottom: '1px solid #e2e8f0' }}>
-          <div><h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Nuevo riesgo operacional</h2><p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>Define la naturaleza y nivel del riesgo</p></div>
-          <button onClick={onClose} disabled={saving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#94a3b8' }}><IconX size={15} /></button>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Nuevo riesgo operacional</h2>
+            <p style={{ margin: 0, fontSize: 12, color: '#94a3b8' }}>Define la naturaleza y nivel del riesgo</p>
+          </div>
+          <button onClick={onClose} disabled={saving} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 7, border: '1px solid #e2e8f0', background: 'white', cursor: 'pointer', color: '#94a3b8' }}>
+            <IconX size={15} />
+          </button>
         </div>
+
+        {/* Body */}
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Categoría */}
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Categoría</label>
-            <select value={categoria} onChange={e => setCategoria(e.target.value)} style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '8px 11px', fontSize: 13, color: '#1e293b', outline: 'none', fontFamily: 'inherit', background: 'white' }}>
+            <select
+              value={categoria}
+              onChange={e => setCategoria(e.target.value)}
+              style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '8px 11px', fontSize: 13, color: '#1e293b', outline: 'none', fontFamily: 'inherit', background: 'white' }}
+            >
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
               <option value="__custom__">+ Nueva categoría…</option>
             </select>
-            {categoria === '__custom__' && <input value={categoriaCustom} onChange={e => setCategoriaCustom(e.target.value)} placeholder="Nombre de la categoría" style={{ marginTop: 8, width: '100%', border: '1.5px solid #185FA5', borderRadius: 8, padding: '8px 11px', fontSize: 13, color: '#1e293b', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }} />}
+            {categoria === '__custom__' && (
+              <input
+                value={categoriaCustom}
+                onChange={e => setCategoriaCustom(e.target.value)}
+                placeholder="Nombre de la categoría"
+                style={{ marginTop: 8, width: '100%', border: '1.5px solid #185FA5', borderRadius: 8, padding: '8px 11px', fontSize: 13, color: '#1e293b', outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
+              />
+            )}
           </div>
+
+          {/* Descripción con feedback */}
           <div>
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>Descripción del riesgo</label>
-            <textarea value={descripcion} onChange={e => setDescripcion(e.target.value)} rows={3} placeholder="Describe el riesgo identificado…" style={{ width: '100%', border: '1.5px solid #e2e8f0', borderRadius: 8, padding: '8px 11px', fontSize: 13, color: '#1e293b', outline: 'none', fontFamily: 'inherit', resize: 'vertical', boxSizing: 'border-box' }} />
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 6 }}>
+              Descripción del riesgo
+              <span style={{ color: '#dc2626', marginLeft: 2 }}>*</span>
+            </label>
+            <textarea
+              value={descripcion}
+              onChange={e => {
+                setDescripcion(e.target.value);
+                if (e.target.value.trim()) setDescError(false);
+              }}
+              rows={3}
+              placeholder="Describe el riesgo identificado…"
+              style={{
+                width: '100%',
+                border: `1.5px solid ${descError ? '#dc2626' : '#e2e8f0'}`,
+                borderRadius: 8,
+                padding: '8px 11px',
+                fontSize: 13,
+                color: '#1e293b',
+                outline: 'none',
+                fontFamily: 'inherit',
+                resize: 'vertical',
+                boxSizing: 'border-box',
+                boxShadow: descError ? '0 0 0 3px rgba(220,38,38,0.12)' : 'none',
+                transition: 'border-color 0.15s, box-shadow 0.15s',
+              }}
+            />
+            {descError && (
+              <p style={{ margin: '5px 0 0', fontSize: 12, color: '#dc2626', display: 'flex', alignItems: 'center', gap: 5 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                La descripción del riesgo es obligatoria
+              </p>
+            )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+          {/* Sliders Probabilidad e Impacto con ticks 1-5 */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 8 }}>Probabilidad: <span style={{ color: '#185FA5' }}>{LABELS_PROB[probabilidad - 1]} ({probabilidad})</span></label>
-              <input type="range" min={1} max={5} value={probabilidad} onChange={e => setProbabilidad(Number(e.target.value))} style={{ width: '100%', accentColor: '#185FA5' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 2 }}><span>1</span><span>5</span></div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 10 }}>
+                Probabilidad: <span style={{ color: '#185FA5' }}>{LABELS_PROB[probabilidad - 1]} ({probabilidad})</span>
+              </label>
+              <SliderConTicks
+                value={probabilidad}
+                onChange={setProbabilidad}
+                accentColor="#185FA5"
+                labels={LABELS_PROB}
+              />
             </div>
             <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 8 }}>Impacto: <span style={{ color: '#dc2626' }}>{LABELS_IMP[impacto - 1]} ({impacto})</span></label>
-              <input type="range" min={1} max={5} value={impacto} onChange={e => setImpacto(Number(e.target.value))} style={{ width: '100%', accentColor: '#dc2626' }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: '#94a3b8', marginTop: 2 }}><span>1</span><span>5</span></div>
+              <label style={{ fontSize: 12, fontWeight: 600, color: '#475569', display: 'block', marginBottom: 10 }}>
+                Impacto: <span style={{ color: '#dc2626' }}>{LABELS_IMP[impacto - 1]} ({impacto})</span>
+              </label>
+              <SliderConTicks
+                value={impacto}
+                onChange={setImpacto}
+                accentColor="#dc2626"
+                labels={LABELS_IMP}
+              />
             </div>
           </div>
+
+          {/* Nivel resultante */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderRadius: 8, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
             <span style={{ fontSize: 12, color: '#64748b' }}>Nivel resultante:</span>
             <span style={{ fontSize: 12, fontWeight: 700, padding: '2px 9px', borderRadius: 5, background: nCol.bg, color: nCol.color }}>{nivel}</span>
             <span style={{ fontSize: 12, color: '#94a3b8', marginLeft: 'auto' }}>Score: {probabilidad * impacto}</span>
           </div>
-          {error && <p style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '7px 12px', margin: 0 }}>{error}</p>}
+
+          {error && (
+            <p style={{ fontSize: 12, color: '#dc2626', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '7px 12px', margin: 0 }}>
+              {error}
+            </p>
+          )}
         </div>
+
+        {/* Footer */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '14px 22px', borderTop: '1px solid #e2e8f0' }}>
-          <button onClick={onClose} disabled={saving} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', fontSize: 13, fontWeight: 500, color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}>Cancelar</button>
-          <button onClick={handleSave} disabled={saving || !catFinal || !descripcion.trim()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 20px', borderRadius: 8, border: 'none', background: '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+          <button
+            onClick={onClose}
+            disabled={saving}
+            style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'white', fontSize: 13, fontWeight: 500, color: '#64748b', cursor: 'pointer', fontFamily: 'inherit' }}
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || !catFinal}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 20px', borderRadius: 8, border: 'none', background: (!catFinal || saving) ? '#93c5fd' : '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: (!catFinal || saving) ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}
+          >
             {saving ? 'Guardando…' : <><IconPlus size={14} /> Agregar riesgo</>}
           </button>
         </div>
@@ -264,21 +403,6 @@ function ModalNuevoRiesgo({ idempresa, categorias, onClose, onCreated }: { idemp
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// REEMPLAZA TabCatalogo, TabVertical y TabHorizontal en ModuloEstadoFinanciero.tsx
-//
-// PROBLEMA IDENTIFICADO EN SUPABASE:
-//   - Catálogo 12 (Balance General): ítems raíz son HOJAS (contenedor=false, iditempadre=null)
-//     Ej: "FONDOS DISPONIBLES" cod=11, "OBLIGACIONES CON PÚBLICO" cod=21, etc.
-//   - Catálogo 13 (Estado de Resultados): mezcla de:
-//       * Contenedores raíz (contenedor=true, iditempadre=null): M1,M2,M3,M4,M5
-//       * Hojas raíz sueltas (contenedor=false, iditempadre=null): 56,47,48
-//
-// SOLUCIÓN: renderizar TODOS los ítems en orden (flattenWithDepth ya los ordena bien).
-// Los contenedores = cabecera oscura. Las hojas = fila normal con indentación por depth.
-// No filtrar nada — mostrar el árbol completo tal como viene de Supabase.
-// ─────────────────────────────────────────────────────────────────────────────
 
 /* ─── TAB: Catálogo ── */
 function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
@@ -297,94 +421,52 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
   }, [estadoOverride?.id]);
 
   const filtered = search
-    ? items.filter(i =>
-      i.nombre.toLowerCase().includes(search.toLowerCase()) ||
-      (i.codigo ?? '').toLowerCase().includes(search.toLowerCase())
-    )
+    ? items.filter(i => i.nombre.toLowerCase().includes(search.toLowerCase()) || (i.codigo ?? '').toLowerCase().includes(search.toLowerCase()))
     : items;
 
   const COL_W = 140, LABEL_W = 380;
-
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', flex: '0 1 280px' }}>
-          <IconSearch size={14} />
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cuenta…"
-            style={{ border: 'none', outline: 'none', fontSize: 13, color: '#1e293b', background: 'transparent', width: '100%' }} />
-        </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'white', border: '1px solid #e2e8f0', borderRadius: 8, padding: '8px 14px', maxWidth: 280 }}>
+        <IconSearch size={14} />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar cuenta…"
+          style={{ border: 'none', outline: 'none', fontSize: 13, color: '#1e293b', background: 'transparent', width: '100%' }} />
       </div>
-
       <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ minWidth: LABEL_W + anios.length * COL_W }}>
-            {/* Cabecera */}
             <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0', position: 'sticky', top: 0, zIndex: 5 }}>
               <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
               {anios.map(a => (
                 <div key={a.id} style={{ width: COL_W, minWidth: COL_W, padding: '11px 12px', textAlign: 'right' as const, fontSize: 13, fontWeight: 700, color: '#185FA5' }}>{a.valor}</div>
               ))}
             </div>
-
             {filtered.length === 0
               ? <div style={{ padding: 32, textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>Sin resultados</div>
               : filtered.map(item => {
                 const depth = item.depth ?? 0;
                 const isContenedor = item.contenedor;
-
-                const bgBase = isContenedor
-                  ? (depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569')
-                  : (depth === 0 ? 'white' : 'white');
-
+                const bgBase = isContenedor ? (depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569') : 'white';
                 return (
-                  <div
-                    key={item.id}
-                    style={{
-                      display: 'flex',
-                      borderBottom: `1px solid ${isContenedor ? 'rgba(255,255,255,0.06)' : '#f1f5f9'}`,
-                      background: bgBase,
-                    }}
+                  <div key={item.id}
+                    style={{ display: 'flex', borderBottom: `1px solid ${isContenedor ? 'rgba(255,255,255,0.06)' : '#f1f5f9'}`, background: bgBase }}
                     onMouseEnter={e => { if (!isContenedor) e.currentTarget.style.background = '#f0f7ff'; }}
                     onMouseLeave={e => { if (!isContenedor) e.currentTarget.style.background = bgBase; }}
                   >
-                    <div style={{
-                      width: LABEL_W, minWidth: LABEL_W,
-                      padding: '9px 20px',
-                      paddingLeft: 20 + depth * 22,
-                      display: 'flex', alignItems: 'center', gap: 7,
-                    }}>
+                    <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px', paddingLeft: 20 + depth * 22, display: 'flex', alignItems: 'center', gap: 7 }}>
                       {item.codigo && (
-                        <span style={{
-                          fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
-                          color: isContenedor ? 'rgba(255,255,255,0.85)' : '#185FA5',
-                          background: isContenedor ? 'rgba(255,255,255,0.15)' : '#E6F1FB',
-                          padding: '1px 5px', borderRadius: 4, flexShrink: 0,
-                        }}>{item.codigo}</span>
+                        <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: isContenedor ? 'rgba(255,255,255,0.85)' : '#185FA5', background: isContenedor ? 'rgba(255,255,255,0.15)' : '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>
                       )}
-                      <span style={{
-                        fontSize: isContenedor ? 12 : 13,
-                        color: isContenedor ? 'white' : '#1e293b',
-                        fontWeight: isContenedor ? 700 : 400,
-                        textTransform: isContenedor ? 'uppercase' as const : 'none' as const,
-                        letterSpacing: isContenedor ? '0.04em' : 'normal',
-                      }}>
+                      <span style={{ fontSize: isContenedor ? 12 : 13, color: isContenedor ? 'white' : '#1e293b', fontWeight: isContenedor ? 700 : 400, textTransform: isContenedor ? 'uppercase' as const : 'none' as const, letterSpacing: isContenedor ? '0.04em' : 'normal' }}>
                         {item.nombre}
                       </span>
                     </div>
                     {anios.map(a => {
                       const val = valMap[item.id]?.[a.id] ?? 0;
                       return (
-                        <div key={a.id} style={{
-                          width: COL_W, minWidth: COL_W, padding: '9px 12px',
-                          textAlign: 'right' as const, fontFamily: 'monospace',
-                          fontSize: isContenedor ? 12 : 13,
-                          color: isContenedor
-                            ? (val !== 0 ? 'white' : 'rgba(255,255,255,0.3)')
-                            : (val !== 0 ? '#0f172a' : '#cbd5e1'),
-                          fontWeight: isContenedor ? 700 : 400,
-                        }}>
+                        <div key={a.id} style={{ width: COL_W, minWidth: COL_W, padding: '9px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: isContenedor ? 12 : 13, color: isContenedor ? (val !== 0 ? 'white' : 'rgba(255,255,255,0.3)') : (val !== 0 ? '#0f172a' : '#cbd5e1'), fontWeight: isContenedor ? 700 : 400 }}>
                           {fmtNum(val)}
                         </div>
                       );
@@ -400,37 +482,13 @@ function TabCatalogo({ empresa, estadoOverride }: { empresa: Empresa; estadoOver
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TabVertical — versión final
-//
-// MODO AUTOMÁTICO:
-//   Cada ítem raíz (iditempadre=null) es su propio 100%.
-//   - Si es contenedor (M1, M2...): cabecera azul oscura, sus hijos muestran
-//     cuánto % representan del total de ese contenedor raíz.
-//   - Si es hoja raíz suelta (ej: cod=56 OTROS INGRESOS): fila normal con 100%.
-//
-// MODO CONFIGURAR:
-//   La ingeniera selecciona UNO o VARIOS ítems raíz.
-//   La suma de todos los seleccionados = 100%.
-//   Todas las cuentas debajo de esos grupos se calculan sobre ESE total único.
-//   Solo en memoria — no se guarda en BD.
-//
-// ESTRUCTURA REAL EN SUPABASE (Finaxis):
-//   Catálogo 12: hojas raíz directas (cod 11,12,13,21,22...)
-//   Catálogo 13: contenedores raíz M1-M5 + hojas sueltas (56,47,48)
-// ─────────────────────────────────────────────────────────────────────────────
-
-
 interface VerticalConfig {
   mode: 'auto' | 'config';
-  selectedRoots: number[]; // ids de ítems raíz seleccionados como base
+  selectedRoots: number[];
 }
 
-function TabVertical({
-  empresa,
-  estadoOverride,
-  onConfigChange,
-}: {
+/* ─── TAB: Análisis Vertical ── */
+function TabVertical({ empresa, estadoOverride, onConfigChange }: {
   empresa: Empresa;
   estadoOverride: EstadoCuenta;
   onConfigChange?: (config: VerticalConfig) => void;
@@ -450,33 +508,21 @@ function TabVertical({
     });
   }, [estadoOverride?.id]);
 
-  // ── Notificar al padre cada vez que cambia la config ──
-  useEffect(() => {
-    onConfigChange?.({ mode: subTab, selectedRoots });
-  }, [subTab, selectedRoots]);
+  useEffect(() => { onConfigChange?.({ mode: subTab, selectedRoots }); }, [subTab, selectedRoots]);
 
   if (loading) return <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>;
 
-  // Ítems raíz en orden (iditempadre === null)
   const rootItems = items.filter(i => i.iditempadre === null);
 
-  // ── Helpers ──────────────────────────────────────────────────────────────
-
-  // Hojas descendientes de un nodo contenedor
   function leavesOf(parentId: number): ItemCat[] {
-    return items
-      .filter(i => i.iditempadre === parentId)
-      .flatMap(c => c.contenedor ? leavesOf(c.id) : [c]);
+    return items.filter(i => i.iditempadre === parentId).flatMap(c => c.contenedor ? leavesOf(c.id) : [c]);
   }
 
-  // Valor efectivo de un ítem para un año:
-  //   hoja → valor directo | contenedor → suma abs de sus hojas
   function efectivo(item: ItemCat, anioId: number): number {
     if (!item.contenedor) return valMap[item.id]?.[anioId] ?? 0;
     return leavesOf(item.id).reduce((s, l) => s + Math.abs(valMap[l.id]?.[anioId] ?? 0), 0);
   }
 
-  // Totales de la base configurada (suma de raíces seleccionadas)
   const configTotals: Record<number, number> = {};
   if (selectedRoots.length > 0) {
     for (const a of anios) {
@@ -485,50 +531,26 @@ function TabVertical({
     }
   }
 
-  const LABEL_W = 380, COL_W = 150, PCT_W = 90;
+  const LABEL_W = 380, COL_W = 150, PCT_W = 100;
 
-  // ── Renderizador MODO AUTOMÁTICO ─────────────────────────────────────────
-  // baseTotal: total del contenedor RAÍZ al que pertenece este ítem (para % relativo)
   function renderAutoRow(item: ItemCat, baseTotal: Record<number, number> | null): React.ReactNode {
     const depth = item.depth ?? 0;
     const isContenedor = item.contenedor;
-
-    // Total propio de este ítem
     const myTotals: Record<number, number> = {};
     for (const a of anios) myTotals[a.id] = efectivo(item, a.id);
 
     if (isContenedor) {
-      // Sólo mostrar si tiene datos
       const hasData = anios.some(a => myTotals[a.id] !== 0);
       if (!hasData) return null;
-
       const bgColor = depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569';
-      // Si es raíz (depth=0): él mismo es la base (100%)
-      // Si es sub-contenedor: base viene del padre raíz
       const myBase = depth === 0 ? myTotals : baseTotal;
-
       return (
         <div key={item.id}>
-          {/* Cabecera contenedor */}
           <div style={{ display: 'flex', background: bgColor }}>
-            <div style={{
-              width: LABEL_W, minWidth: LABEL_W,
-              padding: `${depth === 0 ? 10 : 8}px 20px`,
-              paddingLeft: 20 + depth * 20,
-              display: 'flex', alignItems: 'center', gap: 7,
-            }}>
+            <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: `${depth === 0 ? 10 : 8}px 20px`, paddingLeft: 20 + depth * 20, display: 'flex', alignItems: 'center', gap: 7 }}>
               {depth > 0 && <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>↳</span>}
-              {item.codigo && (
-                <span style={{
-                  fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
-                  background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)',
-                  padding: '1px 6px', borderRadius: 4, flexShrink: 0,
-                }}>{item.codigo}</span>
-              )}
-              <span style={{
-                fontSize: depth === 0 ? 12 : 11, fontWeight: 800, color: 'white',
-                textTransform: 'uppercase' as const, letterSpacing: '0.05em',
-              }}>{item.nombre}</span>
+              {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.9)', padding: '1px 6px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
+              <span style={{ fontSize: depth === 0 ? 12 : 11, fontWeight: 800, color: 'white', textTransform: 'uppercase' as const, letterSpacing: '0.05em' }}>{item.nombre}</span>
             </div>
             {anios.map(a => {
               const tot = myTotals[a.id] ?? 0;
@@ -536,15 +558,11 @@ function TabVertical({
               const pct = depth === 0 ? 100 : (base > 0 ? (tot / base) * 100 : 0);
               return (
                 <div key={a.id} style={{ display: 'flex' }}>
-                  <div style={{
-                    width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
-                    fontFamily: 'monospace', fontSize: 12, fontWeight: 800,
-                    color: tot !== 0 ? 'white' : 'rgba(255,255,255,0.25)',
-                  }}>{fmtNum(tot)}</div>
+                  <div style={{ width: COL_W, padding: '8px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 12, fontWeight: 800, color: tot !== 0 ? 'white' : 'rgba(255,255,255,0.25)' }}>{fmtNum(tot)}</div>
                   <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
                     {tot !== 0
                       ? <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>
-                        {depth === 0 ? '100%' : `${pct.toFixed(1)}%`}
+                        {depth === 0 ? '100.00%' : `${pct.toFixed(2)}%`}
                       </span>
                       : <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11 }}>—</span>
                     }
@@ -553,57 +571,33 @@ function TabVertical({
               );
             })}
           </div>
-          {/* Hijos recursivos — les pasamos la base raíz */}
-          {items
-            .filter(c => c.iditempadre === item.id)
-            .map(child => renderAutoRow(child, depth === 0 ? myTotals : myBase))
-          }
+          {items.filter(c => c.iditempadre === item.id).map(child => renderAutoRow(child, depth === 0 ? myTotals : myBase))}
         </div>
       );
     }
 
-    // ── Hoja ──
     return (
       <div key={item.id}
         style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: 'white' }}
         onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
         onMouseLeave={e => (e.currentTarget.style.background = 'white')}
       >
-        <div style={{
-          width: LABEL_W, minWidth: LABEL_W,
-          padding: '8px 20px', paddingLeft: 20 + depth * 20,
-          display: 'flex', alignItems: 'center', gap: 7,
-        }}>
-          {item.codigo && (
-            <span style={{
-              fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
-              color: '#185FA5', background: '#E6F1FB',
-              padding: '1px 5px', borderRadius: 4, flexShrink: 0,
-            }}>{item.codigo}</span>
-          )}
+        <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '8px 20px', paddingLeft: 20 + depth * 20, display: 'flex', alignItems: 'center', gap: 7 }}>
+          {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
           <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
         </div>
         {anios.map(a => {
           const val = valMap[item.id]?.[a.id] ?? 0;
           const base = baseTotal ? (baseTotal[a.id] ?? 0) : 0;
-          // Si es hoja raíz suelta (depth=0, sin baseTotal): ella misma es 100%
           const isRootLeaf = depth === 0 && !baseTotal;
           const pct = isRootLeaf ? 100 : (base > 0 ? (Math.abs(val) / base) * 100 : 0);
           return (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{
-                width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
-                fontFamily: 'monospace', fontSize: 13,
-                color: val !== 0 ? '#0f172a' : '#cbd5e1',
-              }}>{fmtNum(val)}</div>
+              <div style={{ width: COL_W, padding: '8px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 13, color: val !== 0 ? '#0f172a' : '#cbd5e1' }}>{fmtNum(val)}</div>
               <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
                 {val !== 0
-                  ? <span style={{
-                    fontSize: 11, fontWeight: 700, color: '#7c3aed',
-                    background: '#ede9fe', padding: '2px 7px', borderRadius: 5,
-                    border: '1px solid #c4b5fd', display: 'inline-block',
-                  }}>
-                    {isRootLeaf ? '100%' : (pct > 0 ? `${pct.toFixed(1)}%` : '—')}
+                  ? <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', padding: '2px 7px', borderRadius: 5, border: '1px solid #c4b5fd', display: 'inline-block' }}>
+                    {isRootLeaf ? '100.00%' : (pct > 0 ? `${pct.toFixed(2)}%` : '—')}
                   </span>
                   : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>
                 }
@@ -615,29 +609,17 @@ function TabVertical({
     );
   }
 
-  // ── Renderizador MODO CONFIG ──────────────────────────────────────────────
-  // Todas las cuentas se calculan sobre configTotals (la base única elegida)
   function renderConfigRow(item: ItemCat): React.ReactNode {
     const depth = item.depth ?? 0;
     const isContenedor = item.contenedor;
-
     if (isContenedor) {
       const bgColor = depth === 0 ? '#334155' : depth === 1 ? '#475569' : '#64748b';
       return (
         <div key={item.id}>
           <div style={{ display: 'flex', background: bgColor }}>
-            <div style={{
-              width: LABEL_W, minWidth: LABEL_W,
-              padding: '8px 20px', paddingLeft: 20 + depth * 20,
-              display: 'flex', alignItems: 'center', gap: 7,
-              fontSize: 11, fontWeight: 700,
-              color: 'rgba(255,255,255,0.9)',
-              textTransform: 'uppercase' as const, letterSpacing: '0.04em',
-            }}>
+            <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '8px 20px', paddingLeft: 20 + depth * 20, display: 'flex', alignItems: 'center', gap: 7, fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.9)', textTransform: 'uppercase' as const, letterSpacing: '0.04em' }}>
               {depth > 0 && <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11 }}>↳</span>}
-              {item.codigo && (
-                <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>
-              )}
+              {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', background: 'rgba(255,255,255,0.15)', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
               {item.nombre}
             </div>
             {anios.map(a => {
@@ -646,13 +628,10 @@ function TabVertical({
               const pct = base > 0 ? (Math.abs(tot) / base) * 100 : 0;
               return (
                 <div key={a.id} style={{ display: 'flex' }}>
-                  <div style={{
-                    width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
-                    fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#94a3b8',
-                  }}>{fmtNum(tot)}</div>
+                  <div style={{ width: COL_W, padding: '8px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: '#94a3b8' }}>{fmtNum(tot)}</div>
                   <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
                     <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>
-                      {pct > 0 ? `${pct.toFixed(1)}%` : '—'}
+                      {pct > 0 ? `${pct.toFixed(2)}%` : '—'}
                     </span>
                   </div>
                 </div>
@@ -663,22 +642,14 @@ function TabVertical({
         </div>
       );
     }
-
-    // Hoja
     return (
       <div key={item.id}
         style={{ display: 'flex', borderBottom: '1px solid #f1f5f9', background: 'white' }}
         onMouseEnter={e => (e.currentTarget.style.background = '#f0f7ff')}
         onMouseLeave={e => (e.currentTarget.style.background = 'white')}
       >
-        <div style={{
-          width: LABEL_W, minWidth: LABEL_W,
-          padding: '8px 20px', paddingLeft: 20 + depth * 20,
-          display: 'flex', alignItems: 'center', gap: 7,
-        }}>
-          {item.codigo && (
-            <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>
-          )}
+        <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '8px 20px', paddingLeft: 20 + depth * 20, display: 'flex', alignItems: 'center', gap: 7 }}>
+          {item.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, flexShrink: 0 }}>{item.codigo}</span>}
           <span style={{ fontSize: 13, color: '#1e293b' }}>{item.nombre}</span>
         </div>
         {anios.map(a => {
@@ -687,18 +658,10 @@ function TabVertical({
           const pct = base > 0 ? (Math.abs(val) / base) * 100 : 0;
           return (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center' }}>
-              <div style={{
-                width: COL_W, padding: '8px 12px', textAlign: 'right' as const,
-                fontFamily: 'monospace', fontSize: 13,
-                color: val !== 0 ? '#0f172a' : '#cbd5e1',
-              }}>{fmtNum(val)}</div>
+              <div style={{ width: COL_W, padding: '8px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 13, color: val !== 0 ? '#0f172a' : '#cbd5e1' }}>{fmtNum(val)}</div>
               <div style={{ width: PCT_W, padding: '8px 10px', textAlign: 'right' as const }}>
                 {val !== 0 && pct > 0
-                  ? <span style={{
-                    fontSize: 11, fontWeight: 700, color: '#7c3aed',
-                    background: '#ede9fe', padding: '2px 7px', borderRadius: 5,
-                    border: '1px solid #c4b5fd', display: 'inline-block',
-                  }}>{pct.toFixed(1)}%</span>
+                  ? <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', padding: '2px 7px', borderRadius: 5, border: '1px solid #c4b5fd', display: 'inline-block' }}>{pct.toFixed(2)}%</span>
                   : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>
                 }
               </div>
@@ -709,47 +672,29 @@ function TabVertical({
     );
   }
 
-  // ── RENDER PRINCIPAL ──────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-      {/* Sub-tabs */}
       <div style={{ display: 'flex', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
         {[
           { key: 'auto', label: '📊 Automático', desc: 'Cada grupo = su propio 100%' },
           { key: 'config', label: '⚙️ Configurar base', desc: 'Elige tú el 100% global' },
         ].map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key as 'auto' | 'config')}
-            style={{
-              flex: 1, padding: '12px 20px', fontSize: 13, fontWeight: 600, border: 'none',
-              background: subTab === t.key ? '#f0f7ff' : 'white', cursor: 'pointer',
-              fontFamily: 'inherit',
-              borderBottom: subTab === t.key ? '2px solid #185FA5' : '2px solid transparent',
-              color: subTab === t.key ? '#185FA5' : '#64748b',
-              display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 2,
-              transition: 'all 0.15s',
-            }}>
+            style={{ flex: 1, padding: '12px 20px', fontSize: 13, fontWeight: 600, border: 'none', background: subTab === t.key ? '#f0f7ff' : 'white', cursor: 'pointer', fontFamily: 'inherit', borderBottom: subTab === t.key ? '2px solid #185FA5' : '2px solid transparent', color: subTab === t.key ? '#185FA5' : '#64748b', display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 2, transition: 'all 0.15s' }}>
             <span>{t.label}</span>
             <span style={{ fontSize: 10, fontWeight: 400, color: subTab === t.key ? '#185FA5' : '#94a3b8' }}>{t.desc}</span>
           </button>
         ))}
       </div>
 
-      {/* ══════════════════════════ MODO AUTOMÁTICO ══════════════════════════ */}
       {subTab === 'auto' && (
         <>
-          <div style={{
-            fontSize: 12, color: '#64748b', background: '#f0f7ff',
-            border: '1px solid #b5d4f4', borderRadius: 7, padding: '8px 14px',
-            display: 'flex', alignItems: 'center', gap: 6,
-          }}>
+          <div style={{ fontSize: 12, color: '#64748b', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 7, padding: '8px 14px', display: 'flex', alignItems: 'center', gap: 6 }}>
             ℹ️ <span><strong>Automático:</strong> cada grupo raíz es su propio 100%. Los porcentajes muestran la participación de cada cuenta dentro de su bloque.</span>
           </div>
-
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
             <div style={{ overflowX: 'auto' }}>
               <div style={{ minWidth: LABEL_W + anios.length * (COL_W + PCT_W) }}>
-                {/* Header columnas */}
                 <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                   <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
                   {anios.map(a => (
@@ -759,7 +704,6 @@ function TabVertical({
                     </div>
                   ))}
                 </div>
-                {/* Árbol: todos los ítems raíz, cada uno con su propia base */}
                 {rootItems.map(ri => renderAutoRow(ri, null))}
               </div>
             </div>
@@ -767,128 +711,55 @@ function TabVertical({
         </>
       )}
 
-      {/* ══════════════════════════ MODO CONFIGURAR ══════════════════════════ */}
       {subTab === 'config' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-
-          {/* Panel selector de grupos */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: '18px 20px' }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
-              Selecciona los grupos que forman el 100%
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Selecciona los grupos que forman el 100%</div>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
               Puedes elegir <strong>uno o varios</strong> grupos. Su suma será el denominador único.
-              Ej: si eliges <strong>ACTIVOS</strong> (100) + <strong>PASIVOS</strong> (100) → total = 200,
-              y una cuenta de 20 representará el <strong>10%</strong>.
             </div>
-
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
               {rootItems.map(ri => {
                 const isSelected = selectedRoots.includes(ri.id);
                 const lastAnio = anios[anios.length - 1];
                 const lastTotal = lastAnio ? Math.abs(efectivo(ri, lastAnio.id)) : 0;
                 const hasData = anios.some(a => efectivo(ri, a.id) !== 0);
-
                 return (
                   <button key={ri.id}
-                    onClick={() => {
-                      if (!hasData) return;
-                      setSelectedRoots(prev =>
-                        isSelected ? prev.filter(id => id !== ri.id) : [...prev, ri.id]
-                      );
-                    }}
-                    style={{
-                      padding: '10px 14px', borderRadius: 10,
-                      border: `2px solid ${isSelected ? '#185FA5' : '#e2e8f0'}`,
-                      background: isSelected ? '#E6F1FB' : hasData ? 'white' : '#f8fafc',
-                      cursor: hasData ? 'pointer' : 'not-allowed',
-                      fontFamily: 'inherit', opacity: hasData ? 1 : 0.4,
-                      display: 'flex', flexDirection: 'column' as const,
-                      alignItems: 'flex-start', gap: 4,
-                      transition: 'all 0.15s', minWidth: 150,
-                      boxShadow: isSelected ? '0 0 0 3px rgba(24,95,165,0.12)' : 'none',
-                    }}>
+                    onClick={() => { if (!hasData) return; setSelectedRoots(prev => isSelected ? prev.filter(id => id !== ri.id) : [...prev, ri.id]); }}
+                    style={{ padding: '10px 14px', borderRadius: 10, border: `2px solid ${isSelected ? '#185FA5' : '#e2e8f0'}`, background: isSelected ? '#E6F1FB' : hasData ? 'white' : '#f8fafc', cursor: hasData ? 'pointer' : 'not-allowed', fontFamily: 'inherit', opacity: hasData ? 1 : 0.4, display: 'flex', flexDirection: 'column' as const, alignItems: 'flex-start', gap: 4, transition: 'all 0.15s', minWidth: 150, boxShadow: isSelected ? '0 0 0 3px rgba(24,95,165,0.12)' : 'none' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, width: '100%' }}>
-                      {ri.codigo && (
-                        <span style={{
-                          fontSize: 10, fontFamily: 'monospace', fontWeight: 700,
-                          color: isSelected ? '#185FA5' : '#64748b',
-                          background: isSelected ? '#dbeafe' : '#f1f5f9',
-                          padding: '1px 5px', borderRadius: 4,
-                        }}>{ri.codigo}</span>
-                      )}
-                      <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? '#185FA5' : '#475569', flex: 1, textAlign: 'left' as const }}>
-                        {ri.nombre.length > 22 ? ri.nombre.slice(0, 22) + '…' : ri.nombre}
-                      </span>
-                      {isSelected && (
-                        <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#185FA5', color: 'white', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>
-                      )}
+                      {ri.codigo && <span style={{ fontSize: 10, fontFamily: 'monospace', fontWeight: 700, color: isSelected ? '#185FA5' : '#64748b', background: isSelected ? '#dbeafe' : '#f1f5f9', padding: '1px 5px', borderRadius: 4 }}>{ri.codigo}</span>}
+                      <span style={{ fontSize: 12, fontWeight: 700, color: isSelected ? '#185FA5' : '#475569', flex: 1, textAlign: 'left' as const }}>{ri.nombre.length > 22 ? ri.nombre.slice(0, 22) + '…' : ri.nombre}</span>
+                      {isSelected && <span style={{ width: 18, height: 18, borderRadius: '50%', background: '#185FA5', color: 'white', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>✓</span>}
                     </div>
-                    <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>
-                      {lastAnio ? `${lastAnio.valor}: ${lastTotal !== 0 ? fmtNum(lastTotal) : '—'}` : '—'}
-                    </span>
-                    {isSelected && (
-                      <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#dbeafe', padding: '1px 7px', borderRadius: 4 }}>
-                        en base
-                      </span>
-                    )}
+                    <span style={{ fontSize: 10, color: '#94a3b8', fontFamily: 'monospace' }}>{lastAnio ? `${lastAnio.valor}: ${lastTotal !== 0 ? fmtNum(lastTotal) : '—'}` : '—'}</span>
+                    {isSelected && <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#dbeafe', padding: '1px 7px', borderRadius: 4 }}>en base</span>}
                   </button>
                 );
               })}
             </div>
-
-            {/* Resumen base configurada */}
             {selectedRoots.length > 0 && (
-              <div style={{
-                marginTop: 16, padding: '12px 14px',
-                background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 9,
-                display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-              }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#185FA5' }}>
-                  Base = 100%:
-                </span>
+              <div style={{ marginTop: 16, padding: '12px 14px', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 9, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#185FA5' }}>Base = 100%:</span>
                 {anios.map(a => (
-                  <span key={a.id} style={{
-                    fontSize: 12, fontWeight: 700, color: '#1e3a5f',
-                    background: 'white', border: '1px solid #b5d4f4',
-                    padding: '3px 10px', borderRadius: 6, fontFamily: 'monospace',
-                  }}>
+                  <span key={a.id} style={{ fontSize: 12, fontWeight: 700, color: '#1e3a5f', background: 'white', border: '1px solid #b5d4f4', padding: '3px 10px', borderRadius: 6, fontFamily: 'monospace' }}>
                     {a.valor}: {fmtNum(configTotals[a.id] ?? 0)}
                   </span>
                 ))}
-                <button
-                  onClick={() => setSelectedRoots([])}
-                  style={{
-                    marginLeft: 'auto', fontSize: 11, color: '#dc2626',
-                    background: '#fef2f2', border: '1px solid #fca5a5',
-                    borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit',
-                  }}>
-                  ✕ Limpiar
-                </button>
+                <button onClick={() => setSelectedRoots([])} style={{ marginLeft: 'auto', fontSize: 11, color: '#dc2626', background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>✕ Limpiar</button>
               </div>
             )}
           </div>
-
-          {/* Tabla resultado o placeholder */}
           {selectedRoots.length === 0 ? (
-            <div style={{
-              padding: '56px 20px', textAlign: 'center', color: '#94a3b8',
-              background: 'white', border: '1px solid #e2e8f0', borderRadius: 12,
-            }}>
+            <div style={{ padding: '56px 20px', textAlign: 'center', color: '#94a3b8', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }}>
               <div style={{ fontSize: 44, marginBottom: 12 }}>☝️</div>
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>
-                Selecciona al menos un grupo arriba
-              </p>
-              <p style={{ fontSize: 13, margin: 0, maxWidth: 360, marginInline: 'auto', lineHeight: 1.6 }}>
-                El valor total de los grupos que elijas formará el <strong>100%</strong>.
-                Puedes combinar varios grupos para un análisis cruzado.
-              </p>
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>Selecciona al menos un grupo arriba</p>
             </div>
           ) : (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
               <div style={{ overflowX: 'auto' }}>
                 <div style={{ minWidth: LABEL_W + anios.length * (COL_W + PCT_W) }}>
-                  {/* Header */}
                   <div style={{ display: 'flex', background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
                     <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '11px 20px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase' as const }}>Cuenta</div>
                     {anios.map(a => (
@@ -898,32 +769,20 @@ function TabVertical({
                       </div>
                     ))}
                   </div>
-
-                  {/* Fila "BASE = 100%" */}
                   <div style={{ display: 'flex', background: '#1e3a5f', borderBottom: '2px solid #185FA5' }}>
-                    <div style={{
-                      width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px',
-                      fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase' as const,
-                    }}>
+                    <div style={{ width: LABEL_W, minWidth: LABEL_W, padding: '9px 20px', fontSize: 11, fontWeight: 800, color: 'white', textTransform: 'uppercase' as const }}>
                       BASE ({rootItems.filter(ri => selectedRoots.includes(ri.id)).map(ri => ri.codigo ?? ri.nombre.slice(0, 12)).join(' + ')}) = 100%
                     </div>
                     {anios.map(a => (
                       <div key={a.id} style={{ display: 'flex' }}>
-                        <div style={{ width: COL_W, padding: '9px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 12, fontWeight: 800, color: 'white' }}>
-                          {fmtNum(configTotals[a.id] ?? 0)}
-                        </div>
+                        <div style={{ width: COL_W, padding: '9px 12px', textAlign: 'right' as const, fontFamily: 'monospace', fontSize: 12, fontWeight: 800, color: 'white' }}>{fmtNum(configTotals[a.id] ?? 0)}</div>
                         <div style={{ width: PCT_W, padding: '9px 10px', textAlign: 'right' as const }}>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>100%</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: '#fde68a' }}>100.00%</span>
                         </div>
                       </div>
                     ))}
                   </div>
-
-                  {/* Sólo los grupos seleccionados y sus descendientes */}
-                  {rootItems
-                    .filter(ri => selectedRoots.includes(ri.id))
-                    .map(ri => renderConfigRow(ri))
-                  }
+                  {rootItems.filter(ri => selectedRoots.includes(ri.id)).map(ri => renderConfigRow(ri))}
                 </div>
               </div>
             </div>
@@ -960,7 +819,6 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
   const anioComp = anios.find(a => a.id === anioCompId);
   const rootItems = items.filter(i => i.iditempadre === null);
 
-  // Suma abs de hojas descendientes para un año
   function leavesOf(parentId: number): ItemCat[] {
     const children = items.filter(i => i.iditempadre === parentId);
     return children.flatMap(c => c.contenedor ? leavesOf(c.id) : [c]);
@@ -971,7 +829,6 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
     return leavesOf(item.id).reduce((s, l) => s + Math.abs(valMap[l.id]?.[anioId] ?? 0), 0);
   }
 
-  // Renderizar árbol horizontal recursivamente
   function renderHRow(item: ItemCat): React.ReactNode {
     const depth = item.depth ?? 0;
     const isContenedor = item.contenedor;
@@ -983,7 +840,6 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
       const pct = valA !== 0 ? (diff / Math.abs(valA)) * 100 : null;
       const isPos = diff > 0, isNeg = diff < 0;
       const bgColor = depth === 0 ? '#1e3a5f' : depth === 1 ? '#334155' : '#475569';
-
       return (
         <div key={item.id}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px 130px 120px 120px', padding: `${depth === 0 ? 9 : 7}px 20px`, paddingLeft: 20 + depth * 16, background: bgColor, gap: 8, alignItems: 'center' }}>
@@ -1000,7 +856,7 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
             <div style={{ textAlign: 'right' as const }}>
               {pct !== null && diff !== 0 ? (
                 <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: isPos ? 'rgba(134,239,172,0.2)' : 'rgba(252,165,165,0.2)', color: isPos ? '#86efac' : '#fca5a5', border: `1px solid ${isPos ? 'rgba(134,239,172,0.4)' : 'rgba(252,165,165,0.4)'}` }}>
-                  {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+                  {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
                 </span>
               ) : <span style={{ color: '#475569', fontSize: 12 }}>—</span>}
             </div>
@@ -1010,9 +866,7 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
       );
     }
 
-    // Hoja — ocultar si no tiene datos en ningún año
     if (valA === 0 && valB === 0) return null;
-
     const diff = valB - valA;
     const pct = valA !== 0 ? (diff / Math.abs(valA)) * 100 : null;
     const isPos = diff > 0, isNeg = diff < 0;
@@ -1035,7 +889,7 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
         <div style={{ textAlign: 'right' as const }}>
           {pct !== null && diff !== 0 ? (
             <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: isPos ? '#dcfce7' : '#fee2e2', color: isPos ? '#15803d' : '#b91c1c', border: `1px solid ${isPos ? '#86efac' : '#fca5a5'}` }}>
-              {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
+              {isPos ? '▲' : '▼'} {Math.abs(pct).toFixed(2)}%
             </span>
           ) : <span style={{ color: '#cbd5e1', fontSize: 12 }}>—</span>}
         </div>
@@ -1045,7 +899,6 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      {/* Controles */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 16px' }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Comparar:</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1064,7 +917,6 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
           </select>
         </div>
       </div>
-
       {anios.length < 2 ? (
         <div style={{ padding: '40px 20px', textAlign: 'center', color: '#94a3b8', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }}>
           <p style={{ fontSize: 14, fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>Necesitas al menos 2 años</p>
@@ -1090,7 +942,7 @@ function TabHorizontal({ empresa, estadoOverride }: { empresa: Empresa; estadoOv
   );
 }
 
-/* ─── TAB: Ratios — LEE FÓRMULAS REALES ── */
+/* ─── TAB: Ratios ── */
 function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverride: EstadoCuenta }) {
   const [items, setItems] = useState<ItemCat[]>([]);
   const [anios, setAnios] = useState<Anio[]>([]);
@@ -1117,12 +969,9 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: '#64748b', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 7, padding: '6px 12px' }}>
-          ℹ️ Mostrando fórmulas del estado financiero seleccionado. Créalas en <strong>"Mis análisis" → Ver análisis → panel de Fórmulas</strong>.
-        </div>
+      <div style={{ fontSize: 12, color: '#64748b', background: '#f0f7ff', border: '1px solid #b5d4f4', borderRadius: 7, padding: '6px 12px' }}>
+        ℹ️ Mostrando fórmulas del estado financiero seleccionado. Créalas en <strong>"Mis análisis" → Ver análisis → panel de Fórmulas</strong>.
       </div>
-
       {formulas.length === 0 ? (
         <div style={{ padding: '48px 40px', textAlign: 'center', color: '#94a3b8', background: 'white', border: '1px solid #e2e8f0', borderRadius: 12 }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📐</div>
@@ -1138,16 +987,12 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
               const result = evaluateFormula(formula.codigo.tokens, flatMap);
               return { anio: a.valor, result };
             });
-            const tieneResultados = resultados.some(r => r.result !== null);
-
             return (
-              <div key={`${formula.source}-${formula.id}`} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)', transition: 'border-color 0.15s, box-shadow 0.15s' }}
+              <div key={`${formula.source}-${formula.id}`} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 18, display: 'flex', flexDirection: 'column', gap: 12, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}
                 onMouseEnter={e => { e.currentTarget.style.borderColor = '#185FA5'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(24,95,165,0.08)'; }}
                 onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.04)'; }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#E6F1FB', color: '#185FA5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                    <IconFormula />
-                  </div>
+                  <div style={{ width: 34, height: 34, borderRadius: 8, background: '#E6F1FB', color: '#185FA5', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><IconFormula /></div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{formula.nombre}</span>
@@ -1173,7 +1018,6 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
                       </span>
                     </div>
                   ))}
-                  {!tieneResultados && <div style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: '4px 0' }}>Sin datos para calcular</div>}
                 </div>
               </div>
             );
@@ -1184,14 +1028,9 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
   );
 }
 
-// ─── PATCH PARA TabRiesgo en ModuloEstadoFinanciero.tsx ───
-// Reemplaza la función TabRiesgo completa con estos 3 fixes:
-// 1. Botones Importar + Registrar juntos
-// 2. Descripción visible completa (no truncada)
-// 3. Frec./Mes resumida visualmente en panel derecho
-
 /* ─── TAB: Riesgo Operacional ── */
 interface EditRiesgo { id: number; descripcion: string; probabilidad: number; impacto: number; categoria: string; }
+
 function TabRiesgo({ empresa }: { empresa: Empresa }) {
   const { user } = useAuth();
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
@@ -1202,7 +1041,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
   const [confirmDel, setConfirmDel] = useState<number | null>(null);
   const [editRiesgo, setEditRiesgo] = useState<EditRiesgo | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
-  // FIX 2: edición inline de descripción
   const [editingDescId, setEditingDescId] = useState<number | null>(null);
   const [editingDescVal, setEditingDescVal] = useState('');
   const CATEGORIAS_DEFAULT = ['Crédito', 'Liquidez', 'Operacional', 'Mercado'];
@@ -1235,19 +1073,13 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
   const handleSaveEdit = async () => {
     if (!editRiesgo) return;
     setSavingEdit(true);
-    await supabase.from('riesgo_operacional').update({
-      descripcion: editRiesgo.descripcion,
-      probabilidad: editRiesgo.probabilidad,
-      impacto: editRiesgo.impacto,
-      categoria: editRiesgo.categoria,
-    }).eq('id', editRiesgo.id);
+    await supabase.from('riesgo_operacional').update({ descripcion: editRiesgo.descripcion, probabilidad: editRiesgo.probabilidad, impacto: editRiesgo.impacto, categoria: editRiesgo.categoria }).eq('id', editRiesgo.id);
     setRiesgos(prev => prev.map(r => r.id === editRiesgo.id ? { ...r, ...editRiesgo } : r));
     setSavingEdit(false);
     setEditRiesgo(null);
     showToast('✓ Riesgo actualizado');
   };
 
-  // FIX 2: guardar descripción inline
   const handleSaveDesc = async (id: number) => {
     if (!editingDescVal.trim()) { setEditingDescId(null); return; }
     await supabase.from('riesgo_operacional').update({ descripcion: editingDescVal.trim() }).eq('id', id);
@@ -1271,42 +1103,30 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
     { label: 'Moderados', count: riesgos.filter(r => getNivel(r.probabilidad, r.impacto) === 'MODERADO').length, color: '#d97706' },
     { label: 'Bajos', count: riesgos.filter(r => getNivel(r.probabilidad, r.impacto) === 'BAJO').length, color: '#16a34a' },
   ];
-
-  // FIX 3: top riesgos por frecuencia
-  const topFrecuencia = [...riesgos]
-    .filter(r => r.frecuencia_actual > 0)
-    .sort((a, b) => b.frecuencia_actual - a.frecuencia_actual)
-    .slice(0, 8);
+  const topFrecuencia = [...riesgos].filter(r => r.frecuencia_actual > 0).sort((a, b) => b.frecuencia_actual - a.frecuencia_actual).slice(0, 8);
   const maxFrec = topFrecuencia[0]?.frecuencia_actual ?? 1;
   const totalOcurrencias = riesgos.reduce((s, r) => s + r.frecuencia_actual, 0);
+
+  const LABELS_PROB = ['Raro', 'Improbable', 'Posible', 'Probable', 'Casi seguro'];
+  const LABELS_IMP = ['Mínimo', 'Menor', 'Moderado', 'Mayor', 'Catastrófico'];
 
   return (
     <>
       {toast && <div style={{ position: 'fixed', bottom: 24, right: 24, background: '#059669', color: 'white', padding: '11px 18px', borderRadius: 8, fontSize: 13, fontWeight: 600, boxShadow: '0 4px 16px rgba(5,150,105,.25)', zIndex: 2000 }}>{toast}</div>}
 
-      {/* FIX 1: Encabezado con botones juntos */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Riesgo Operacional · {empresa.nombre}</h3>
           <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>Mes actual: {new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
         </div>
-        {/* FIX 1: Ambos botones en el mismo grupo, sin separación */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <ImportarRiesgosExcel
-            idempresa={empresa.id}
-            userId={user!.id}
-            onImported={(n: number) => {
-              loadRiesgos();
-              showToast(`✓ ${n} riesgo(s) importados desde Excel`);
-            }}
-          />
+          <ImportarRiesgosExcel idempresa={empresa.id} userId={user!.id} onImported={(n: number) => { loadRiesgos(); showToast(`✓ ${n} riesgo(s) importados desde Excel`); }} />
           <button onClick={() => setShowModal(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
             <IconPlus size={14} /> Registrar riesgo
           </button>
         </div>
       </div>
 
-      {/* Resumen KPIs */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
         {resumen.map(s => (
           <div key={s.label} style={{ flex: 1, minWidth: 80, background: 'white', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', textAlign: 'center' }}>
@@ -1317,7 +1137,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 20 }}>
-        {/* Tabla principal */}
         <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'hidden' }}>
           {loading ? <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Cargando…</div>
             : riesgos.length === 0 ? (
@@ -1328,7 +1147,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               </div>
             ) : (
               <>
-                {/* FIX 2: Cabecera de tabla — columna descripción sin ancho fijo */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '10px 16px', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', gap: 8 }}>
                   {['Descripción', 'Prob.', 'Impacto', 'Nivel', 'Frec./Mes', 'Acción'].map(h => <div key={h} style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</div>)}
                 </div>
@@ -1351,55 +1169,36 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                             style={{ display: 'grid', gridTemplateColumns: '1fr 60px 70px 110px 90px 100px', padding: '10px 16px', borderBottom: '1px solid #f1f5f9', alignItems: 'start', gap: 8 }}
                             onMouseEnter={e => (e.currentTarget.style.background = '#f8fafc')}
                             onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
-
-                            {/* FIX 2: Descripción — mostrar texto completo, editar al doble-clic */}
                             <div style={{ minWidth: 0 }}>
                               {isEditingDesc ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                  <textarea
-                                    autoFocus
-                                    value={editingDescVal}
-                                    onChange={e => setEditingDescVal(e.target.value)}
+                                  <textarea autoFocus value={editingDescVal} onChange={e => setEditingDescVal(e.target.value)}
                                     onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSaveDesc(r.id); } if (e.key === 'Escape') setEditingDescId(null); }}
-                                    style={{ width: '100%', border: '1.5px solid #185FA5', borderRadius: 6, padding: '5px 8px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box', minHeight: 52 }}
-                                  />
+                                    style={{ width: '100%', border: '1.5px solid #185FA5', borderRadius: 6, padding: '5px 8px', fontSize: 12, fontFamily: 'inherit', resize: 'vertical', outline: 'none', boxSizing: 'border-box', minHeight: 52 }} />
                                   <div style={{ display: 'flex', gap: 4 }}>
                                     <button onClick={() => handleSaveDesc(r.id)} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 5, border: 'none', background: '#185FA5', color: 'white', cursor: 'pointer' }}>Guardar</button>
                                     <button onClick={() => setEditingDescId(null)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 5, border: '1px solid #e2e8f0', background: 'white', color: '#64748b', cursor: 'pointer' }}>Cancelar</button>
                                   </div>
                                 </div>
                               ) : (
-                                <div
-                                  title="Doble clic para editar descripción"
-                                  onDoubleClick={() => { setEditingDescId(r.id); setEditingDescVal(r.descripcion); }}
-                                  style={{
-                                    fontSize: 13, color: '#374151', lineHeight: 1.5,
-                                    wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                                    cursor: 'text',
-                                  }}
-                                >
+                                <div title="Doble clic para editar" onDoubleClick={() => { setEditingDescId(r.id); setEditingDescVal(r.descripcion); }}
+                                  style={{ fontSize: 13, color: '#374151', lineHeight: 1.5, wordBreak: 'break-word', whiteSpace: 'pre-wrap', cursor: 'text' }}>
                                   {r.descripcion}
                                 </div>
                               )}
                             </div>
-
                             <div style={{ textAlign: 'center', paddingTop: 2 }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.probabilidad * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.probabilidad}</span></div>
                             <div style={{ textAlign: 'center', paddingTop: 2 }}><span style={{ width: 26, height: 26, borderRadius: '50%', background: `hsl(${120 - r.impacto * 24}, 65%, 45%)`, color: 'white', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{r.impacto}</span></div>
                             <div style={{ paddingTop: 4 }}><span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 5, textTransform: 'uppercase', background: nCol.bg, color: nCol.color }}>{nivel}</span></div>
-
-                            {/* FIX 3: Frec./Mes — input + badge visual */}
                             <div style={{ paddingTop: 2 }}>
                               <input type="number" min={0} max={999} defaultValue={r.frecuencia_actual}
                                 onBlur={e => { const v = parseInt(e.target.value); if (!isNaN(v) && v !== r.frecuencia_actual) handleFrequencyChange(r.id, v); }}
                                 onKeyDown={e => { if (e.key === 'Enter') { const v = parseInt((e.target as HTMLInputElement).value); if (!isNaN(v)) handleFrequencyChange(r.id, v); } }}
                                 style={{ width: 56, border: '1px solid #e2e8f0', borderRadius: 6, padding: '4px 7px', fontSize: 13, textAlign: 'center', outline: 'none', fontFamily: 'inherit', display: 'block' }} />
                               {r.frecuencia_actual > 0 && (
-                                <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, marginTop: 2, display: 'inline-block' }}>
-                                  {r.frecuencia_actual}×/mes
-                                </span>
+                                <span style={{ fontSize: 9, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '1px 5px', borderRadius: 4, marginTop: 2, display: 'inline-block' }}>{r.frecuencia_actual}×/mes</span>
                               )}
                             </div>
-
                             <div style={{ display: 'flex', gap: 4, paddingTop: 2 }}>
                               <button onClick={() => setEditRiesgo({ id: r.id, descripcion: r.descripcion, probabilidad: r.probabilidad, impacto: r.impacto, categoria: r.categoria })}
                                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 6, border: '1px solid #b5d4f4', background: '#E6F1FB', color: '#185FA5', cursor: 'pointer' }}>
@@ -1424,9 +1223,7 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
             )}
         </div>
 
-        {/* Panel derecho: Heat map + categorías + FIX 3: Frecuencias */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {/* Heat map */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 20 }}>
             <p style={{ margin: '0 0 14px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Mapa de Calor · Probabilidad × Impacto</p>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -1438,7 +1235,7 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                   {HEAT_DATA.map((row, ri) => row.map((val, ci) => {
                     const cnt = riesgos.filter(r => (5 - ri) === r.probabilidad && (ci + 1) === r.impacto).length;
                     return (
-                      <div key={`${ri}-${ci}`} style={{ width: 32, height: 32, borderRadius: 5, background: HEAT_COLORS[val], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: cnt > 0 ? 'rgba(0,0,0,0.6)' : 'transparent', cursor: 'default' }}>
+                      <div key={`${ri}-${ci}`} style={{ width: 32, height: 32, borderRadius: 5, background: HEAT_COLORS[val], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: cnt > 0 ? 'rgba(0,0,0,0.6)' : 'transparent' }}>
                         {cnt > 0 ? cnt : ''}
                       </div>
                     );
@@ -1458,8 +1255,6 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               ))}
             </div>
           </div>
-
-          {/* Por Categoría */}
           <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
             <p style={{ margin: '0 0 10px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Por Categoría</p>
             {allCats.map(cat => {
@@ -1477,15 +1272,11 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
               );
             })}
           </div>
-
-          {/* FIX 3: Panel de Frecuencias — muestra top riesgos por ocurrencias este mes */}
           {topFrecuencia.length > 0 && (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
                 <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Frecuencias · Este Mes</p>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '2px 8px', borderRadius: 10 }}>
-                  {totalOcurrencias} total
-                </span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#185FA5', background: '#E6F1FB', padding: '2px 8px', borderRadius: 10 }}>{totalOcurrencias} total</span>
               </div>
               {topFrecuencia.map(r => {
                 const nivel = getNivel(r.probabilidad, r.impacto);
@@ -1494,38 +1285,20 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                 return (
                   <div key={r.id} style={{ marginBottom: 10 }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                      <span style={{
-                        fontSize: 11, color: '#374151', flex: 1, minWidth: 0,
-                        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        maxWidth: 220,
-                      }} title={r.descripcion}>
-                        {r.descripcion}
-                      </span>
+                      <span style={{ fontSize: 11, color: '#374151', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }} title={r.descripcion}>{r.descripcion}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 }}>
                         <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: nCol.bg, color: nCol.color }}>{nivel}</span>
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#185FA5', minWidth: 22, textAlign: 'right' }}>{r.frecuencia_actual}</span>
                       </div>
                     </div>
                     <div style={{ height: 5, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{
-                        height: '100%', width: `${pct}%`,
-                        borderRadius: 3, transition: 'width 0.4s ease',
-                        background: nivel === 'CRÍTICO' ? '#be185d' : nivel === 'ALTO' ? '#dc2626' : nivel === 'MODERADO' ? '#d97706' : '#16a34a',
-                      }} />
+                      <div style={{ height: '100%', width: `${pct}%`, borderRadius: 3, transition: 'width 0.4s ease', background: nivel === 'CRÍTICO' ? '#be185d' : nivel === 'ALTO' ? '#dc2626' : nivel === 'MODERADO' ? '#d97706' : '#16a34a' }} />
                     </div>
                   </div>
                 );
               })}
-              {riesgos.filter(r => r.frecuencia_actual === 0).length > 0 && (
-                <p style={{ fontSize: 11, color: '#94a3b8', margin: '8px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <span>⚪</span>
-                  {riesgos.filter(r => r.frecuencia_actual === 0).length} riesgo{riesgos.filter(r => r.frecuencia_actual === 0).length !== 1 ? 's' : ''} sin ocurrencias este mes
-                </p>
-              )}
             </div>
           )}
-
-          {/* Placeholder si aún no hay frecuencias */}
           {topFrecuencia.length === 0 && riesgos.length > 0 && (
             <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: 12, padding: 16 }}>
               <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Frecuencias · Este Mes</p>
@@ -1560,24 +1333,14 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
                 <textarea value={editRiesgo.descripcion} onChange={e => setEditRiesgo(prev => prev ? { ...prev, descripcion: e.target.value } : prev)} rows={3}
                   style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 7, fontSize: 13, fontFamily: 'inherit', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }} />
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 5 }}>Probabilidad (1–5)</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[1, 2, 3, 4, 5].map(n => (
-                      <button key={n} onClick={() => setEditRiesgo(prev => prev ? { ...prev, probabilidad: n } : prev)}
-                        style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid', borderColor: editRiesgo.probabilidad === n ? `hsl(${120 - n * 24},65%,45%)` : '#e2e8f0', background: editRiesgo.probabilidad === n ? `hsl(${120 - n * 24},65%,45%)` : 'white', color: editRiesgo.probabilidad === n ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{n}</button>
-                    ))}
-                  </div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 8 }}>Probabilidad (1–5)</label>
+                  <SliderConTicks value={editRiesgo.probabilidad} onChange={v => setEditRiesgo(prev => prev ? { ...prev, probabilidad: v } : prev)} accentColor="#185FA5" labels={LABELS_PROB} />
                 </div>
                 <div>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 5 }}>Impacto (1–5)</label>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[1, 2, 3, 4, 5].map(n => (
-                      <button key={n} onClick={() => setEditRiesgo(prev => prev ? { ...prev, impacto: n } : prev)}
-                        style={{ width: 36, height: 36, borderRadius: '50%', border: '2px solid', borderColor: editRiesgo.impacto === n ? `hsl(${120 - n * 24},65%,45%)` : '#e2e8f0', background: editRiesgo.impacto === n ? `hsl(${120 - n * 24},65%,45%)` : 'white', color: editRiesgo.impacto === n ? 'white' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>{n}</button>
-                    ))}
-                  </div>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 8 }}>Impacto (1–5)</label>
+                  <SliderConTicks value={editRiesgo.impacto} onChange={v => setEditRiesgo(prev => prev ? { ...prev, impacto: v } : prev)} accentColor="#dc2626" labels={LABELS_IMP} />
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
@@ -1616,38 +1379,22 @@ export default function ModuloEstadoFinanciero() {
   useEffect(() => {
     if (!empresa) return;
     setKpis(null); setLoadingKpis(true);
-    supabase.rpc('get_kpis_empresa', { p_idempresa: empresa.id })
-      .then(({ data }) => { setKpis(data); setLoadingKpis(false); });
+    supabase.rpc('get_kpis_empresa', { p_idempresa: empresa.id }).then(({ data }) => { setKpis(data); setLoadingKpis(false); });
   }, [empresa]);
 
   useEffect(() => {
     if (!empresa) { setEstados([]); setEstadoSel(null); return; }
     setLoadingEstados(true);
-    supabase.from('estadodecuenta')
-      .select('id, nombre, descripcion, idcatalogo, created_at')
-      .eq('idempresa', empresa.id).eq('estado', true).eq('user', user!.id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        const list = data ?? [];
-        setEstados(list);
-        setEstadoSel(list[0] ?? null);
-        setLoadingEstados(false);
-      });
+    supabase.from('estadodecuenta').select('id, nombre, descripcion, idcatalogo, created_at').eq('idempresa', empresa.id).eq('estado', true).eq('user', user!.id).order('created_at', { ascending: false })
+      .then(({ data }) => { const list = data ?? []; setEstados(list); setEstadoSel(list[0] ?? null); setLoadingEstados(false); });
   }, [empresa]);
 
   const handleExportar = async () => {
     if (!empresa || !estadoSel) return;
-    setExportando(true);
-    setExportProgress('Iniciando exportación...');
-    try {
-      await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg), verticalConfig);
-    } catch (err) {
-      console.error('Error exportando PDF:', err);
-      alert('Error al generar el PDF. Verifica la consola.');
-    } finally {
-      setExportando(false);
-      setExportProgress(null);
-    }
+    setExportando(true); setExportProgress('Iniciando exportación...');
+    try { await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg), verticalConfig); }
+    catch (err) { console.error('Error exportando PDF:', err); alert('Error al generar el PDF. Verifica la consola.'); }
+    finally { setExportando(false); setExportProgress(null); }
   };
 
   const TABS = [
@@ -1662,7 +1409,7 @@ export default function ModuloEstadoFinanciero() {
   const MODULE_CARDS = [
     { icon: <IconBook />, color: '#185FA5', title: 'Catálogo de Cuentas', desc: 'Visualiza la estructura jerárquica completa del catálogo con todos sus valores por período.', stat1: { label: 'Cuentas', val: kpis?.total_cuentas.toString() ?? '…' }, stat2: { label: 'Estados', val: kpis?.total_estados.toString() ?? '…' }, tab: 'catalogo' },
     { icon: <IconBarChart />, color: '#7c3aed', title: 'Análisis Vertical', desc: 'Modo automático (cada grupo = 100%) o configura tú mismo la base del 100%.', stat1: { label: 'Último período', val: kpis?.anios?.[kpis.anios.length - 1] ?? '…' }, stat2: { label: 'Estado activo', val: estadoSel?.nombre?.slice(0, 16) ?? '…' }, tab: 'vertical' },
-    { icon: <IconTrend />, color: '#16a34a', title: 'Análisis Horizontal', desc: 'Variación absoluta y porcentual entre dos períodos, agrupado por bloque (Activos, Pasivos…).', stat1: { label: 'Períodos', val: kpis?.anios?.length.toString() ?? '…' }, stat2: { label: 'Años', val: kpis?.anios?.join(' · ') ?? '…' }, tab: 'horizontal' },
+    { icon: <IconTrend />, color: '#16a34a', title: 'Análisis Horizontal', desc: 'Variación absoluta y porcentual entre dos períodos, agrupado por bloque.', stat1: { label: 'Períodos', val: kpis?.anios?.length.toString() ?? '…' }, stat2: { label: 'Años', val: kpis?.anios?.join(' · ') ?? '…' }, tab: 'horizontal' },
     { icon: <IconFormula />, color: '#d97706', title: 'Ratios Financieros', desc: 'Fórmulas personalizadas creadas en el estado financiero. Resultados calculados automáticamente.', stat1: { label: 'Fórmulas', val: '—' }, stat2: { label: 'Fuente', val: 'Mis análisis' }, tab: 'ratios' },
     { icon: <IconShield />, color: '#dc2626', title: 'Riesgo Operacional', desc: 'Registro mensual de riesgos, frecuencias, mapa de calor y matriz de probabilidad × impacto.', stat1: { label: 'Mes', val: new Date().toLocaleDateString('es-ES', { month: 'short', year: 'numeric' }) }, stat2: { label: 'Categorías', val: '4+' }, tab: 'riesgo' },
   ];
@@ -1680,14 +1427,11 @@ export default function ModuloEstadoFinanciero() {
           </div>
         </div>
       )}
-
       <div className={styles.pageHeader}>
         <div className={styles.headerLeft}>
           <div>
             <h1 className={styles.headerTitle}>Estado Financiero</h1>
-            <p className={styles.headerSub}>
-              {empresa ? `${TIPO_ICONS[empresa.tipo_nombre] ?? '🏢'} ${empresa.nombre} · ${empresa.tipo_nombre}` : 'Selecciona una empresa para comenzar'}
-            </p>
+            <p className={styles.headerSub}>{empresa ? `${TIPO_ICONS[empresa.tipo_nombre] ?? '🏢'} ${empresa.nombre} · ${empresa.tipo_nombre}` : 'Selecciona una empresa para comenzar'}</p>
           </div>
         </div>
         <div className={styles.headerActions}>
@@ -1705,13 +1449,7 @@ export default function ModuloEstadoFinanciero() {
               <IconDownload />
               Exportar PDF
               {verticalConfig.mode === 'config' && verticalConfig.selectedRoots.length > 0 && (
-                <span style={{
-                  fontSize: 9, fontWeight: 700,
-                  background: '#185FA5', color: 'white',
-                  padding: '1px 5px', borderRadius: 8, marginLeft: 4
-                }}>
-                  V. configurado
-                </span>
+                <span style={{ fontSize: 9, fontWeight: 700, background: '#185FA5', color: 'white', padding: '1px 5px', borderRadius: 8, marginLeft: 4 }}>V. configurado</span>
               )}
             </button>
           )}
@@ -1767,7 +1505,7 @@ export default function ModuloEstadoFinanciero() {
               </div>
             )}
             {estadoSel && activeTab === 'catalogo' && <TabCatalogo empresa={empresa} estadoOverride={estadoSel} />}
-            {estadoSel && activeTab === 'vertical' && (<TabVertical empresa={empresa} estadoOverride={estadoSel} onConfigChange={setVerticalConfig} />)}
+            {estadoSel && activeTab === 'vertical' && <TabVertical empresa={empresa} estadoOverride={estadoSel} onConfigChange={setVerticalConfig} />}
             {estadoSel && activeTab === 'horizontal' && <TabHorizontal empresa={empresa} estadoOverride={estadoSel} />}
             {estadoSel && activeTab === 'ratios' && <TabRatios empresa={empresa} estadoOverride={estadoSel} />}
             {activeTab === 'riesgo' && <TabRiesgo empresa={empresa} />}
