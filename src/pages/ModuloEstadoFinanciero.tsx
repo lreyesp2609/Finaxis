@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import styles from './ModuloEstadoFinanciero.module.css';
 import { exportarPDF } from './exportarPDF';
+import ImportarRiesgosExcel from './ImportarRiesgosExcel';
 
 /* ─── Types ── */
 interface Empresa { id: number; nombre: string; descripcion: string | null; idtipo_empresa: number; tipo_nombre: string; created_at: string; total_estados: number; }
@@ -1167,6 +1168,7 @@ function TabRatios({ empresa, estadoOverride }: { empresa: Empresa; estadoOverri
 /* ─── TAB: Riesgo Operacional ── */
 interface EditRiesgo { id: number; descripcion: string; probabilidad: number; impacto: number; categoria: string; }
 function TabRiesgo({ empresa }: { empresa: Empresa }) {
+  const { user } = useAuth();
   const [riesgos, setRiesgos] = useState<Riesgo[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -1241,6 +1243,14 @@ function TabRiesgo({ empresa }: { empresa: Empresa }) {
           <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e293b' }}>Riesgo Operacional · {empresa.nombre}</h3>
           <p style={{ margin: '3px 0 0', fontSize: 12, color: '#94a3b8' }}>Mes actual: {new Date().toLocaleDateString('es-ES', { month: 'long', year: 'numeric' })}</p>
         </div>
+        <ImportarRiesgosExcel
+          idempresa={empresa.id}
+          userId={user!.id}
+          onImported={(n: number) => {
+            loadRiesgos();
+            showToast(`✓ ${n} riesgo(s) importados desde Excel`);
+          }}
+        />
         <button onClick={() => setShowModal(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 18px', borderRadius: 8, border: 'none', background: '#185FA5', color: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
           <IconPlus size={14} /> Registrar riesgo
         </button>
