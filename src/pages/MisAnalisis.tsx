@@ -734,7 +734,7 @@ export default function MisAnalisis() {
       {view === 'empresas' && (
         <>
           <div className={styles.topBar}>
-            <div className={styles.titleSection}><h2>Mis análisis</h2><p>Empresas y estados financieros</p></div>
+            <div className={styles.titleSection}><h2>Mis empresas</h2><p>Empresas y estados financieros</p></div>
             <button className={anStyles.newBtn} onClick={() => setShowModalEmpresa(true)}><IconPlus size={14} /> Nueva empresa</button>
           </div>
           <div className={anStyles.section} style={{ paddingTop: 24 }}>
