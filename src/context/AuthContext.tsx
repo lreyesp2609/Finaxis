@@ -7,6 +7,7 @@ import {
 } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
+import { toast } from 'react-hot-toast';
 
 /* ── Types ─────────────────────────────────────── */
 interface AuthContextType {
@@ -26,22 +27,34 @@ const AuthContext = createContext<AuthContextType>({
 
 /* ── Persona sync helper ────────────────────────── */
 async function syncPersona(user: User) {
-  const { data: existing } = await supabase
-    .from('personas')
-    .select('id')
-    .eq('id', user.id)
-    .maybeSingle();
+  try {
+    const { data: existing, error: selectError } = await supabase
+      .from('personas')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
 
-  if (!existing) {
-    const meta = user.user_metadata ?? {};
-    await supabase.from('personas').insert({
-      id: user.id,
-      email: user.email,
-      nombre: meta.nombre ?? meta.first_name ?? meta.full_name?.split(' ')[0] ?? '',
-      apellido: meta.apellido ?? meta.last_name ?? meta.full_name?.split(' ').slice(1).join(' ') ?? '',
-    });
+    if (selectError) throw selectError;
+
+    if (!existing) {
+      const meta = user.user_metadata ?? {};
+      const { error: insertError } = await supabase.from('personas').insert({
+        id: user.id,
+        email: user.email,
+        nombre: meta.nombre ?? meta.first_name ?? meta.full_name?.split(' ')[0] ?? '',
+        apellido: meta.apellido ?? meta.last_name ?? meta.full_name?.split(' ').slice(1).join(' ') ?? '',
+      });
+      if (insertError) throw insertError;
+    }
+  } catch (err: any) {
+    if (import.meta.env.DEV) {
+      console.error('[syncPersona] Error syncing profile:', err);
+    } else {
+      toast.error('No se pudo sincronizar el perfil de usuario, pero puedes continuar.');
+    }
   }
 }
+
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);

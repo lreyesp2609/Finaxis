@@ -1,4 +1,3 @@
-// @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabaseClient';
@@ -38,7 +37,6 @@ export interface PDFExtractionResult {
 ───────────────────────────────────────── */
 async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   const lines: string[] = [];
@@ -85,7 +83,6 @@ async function extractTextWithOCR(
   onProgress?: (step: string, pct: number) => void
 ): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   const allText: string[] = [];
@@ -111,7 +108,6 @@ async function extractTextWithOCR(
     await page.render({ canvas, viewport }).promise;
 
     const { data } = await Tesseract.recognize(canvas, 'spa', {
-      // @ts-ignore
       logger: (m: any) => {
         if (m.status === 'recognizing text') {
           const pct = 10 + Math.round(((pageNum - 1 + m.progress) / pdf.numPages) * 30);
@@ -119,7 +115,7 @@ async function extractTextWithOCR(
           console.log(`[OCR] Página ${pageNum}: ${Math.round(m.progress * 100)}%`);
         }
       },
-    });
+    } as any);
 
     allText.push(data.text);
     canvas.remove();
@@ -166,6 +162,8 @@ async function matchWithAI(
   catalogItems: CatalogItem[],
   years: string[]
 ): Promise<ExtractedValue[]> {
+  const prompt = `Extrae los valores correspondientes para los años: ${years.join(', ')} basados en la siguiente lista de ítems de catálogo:\n${JSON.stringify(catalogItems, null, 2)}\n\nTexto del PDF:\n${rawText.substring(0, 8000)}`;
+
   const { data, error } = await supabase.functions.invoke('groq-proxy', {
     body: {
       model: 'llama-3.3-70b-versatile',
@@ -188,8 +186,7 @@ async function matchWithAI(
     throw new Error(`Groq API error: ${data.error.message || JSON.stringify(data.error)}`);
   }
 
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content ?? '[]';
+  const text = data?.choices?.[0]?.message?.content ?? '[]';
   const clean = text.replace(/```json|```/g, '').trim();
 
   let parsed: any[] = [];

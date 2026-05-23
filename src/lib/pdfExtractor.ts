@@ -175,9 +175,7 @@ Financial statement text:\n\n${rawText}`
     throw new Error(`Groq API error: ${data.error.message || JSON.stringify(data.error)}`);
   }
 
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content ?? '[]';
-
+  const text = data?.choices?.[0]?.message?.content ?? '[]';
   const clean = text.replace(/```json|```/g, '').trim();
 
   const parsed: any[] = JSON.parse(clean);

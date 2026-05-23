@@ -7,7 +7,6 @@
  * que ya funciona (incluyendo fallback OCR con Tesseract).
  */
 
-// @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Tesseract from 'tesseract.js';
 import { supabase } from './supabaseClient';
@@ -48,7 +47,6 @@ export interface FullPDFExtractionResult {
 ───────────────────────────────────────── */
 async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const lines: string[] = [];
 
@@ -88,7 +86,6 @@ async function extractTextWithOCR(
   onProgress?: (step: string, pct: number) => void
 ): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
   const allText: string[] = [];
 
@@ -110,14 +107,13 @@ async function extractTextWithOCR(
     await page.render({ canvas, viewport }).promise;
 
     const { data } = await Tesseract.recognize(canvas, 'spa', {
-      // @ts-ignore
       logger: (m: any) => {
         if (m.status === 'recognizing text') {
           const pct = 10 + Math.round(((pageNum - 1 + m.progress) / pdf.numPages) * 25);
           onProgress?.(`OCR página ${pageNum}… ${Math.round(m.progress * 100)}%`, pct);
         }
       },
-    });
+    } as any);
 
     allText.push(data.text);
     canvas.remove();
@@ -162,6 +158,15 @@ async function parseStructureAndValuesWithGroq(
   items: Array<{ code: string | null; nombre: string; contenedor: boolean; parentCode: string | null }>;
   values: Array<{ itemCode: string; year: string; valor: number }>;
 }> {
+  const systemPrompt = `Eres un extractor experto de datos y estructuras financieras.
+Analiza el texto de un estado financiero y genera un JSON con dos arreglos:
+1. "items": lista de ítems de catálogo con "code" (código numérico o null), "nombre" (en MAYÚSCULAS), "contenedor" (boolean indicando si agrupa a otros), y "parentCode" (código del grupo padre o null).
+2. "values": lista de valores extraídos con "itemCode" (código del ítem), "year" (año), y "valor" (número decimal).
+
+Responde únicamente con el JSON sin formato markdown ni explicaciones adicionales.`;
+
+  const yearsStr = years.join(', ');
+
   const { data, error } = await supabase.functions.invoke('groq-proxy', {
     body: {
       model: 'llama-3.3-70b-versatile',
@@ -184,8 +189,7 @@ async function parseStructureAndValuesWithGroq(
     throw new Error(`Groq API error: ${data.error.message || JSON.stringify(data.error)}`);
   }
 
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content ?? '{}';
+  const text = data?.choices?.[0]?.message?.content ?? '{}';
   const clean = text.replace(/```json|```/g, '').trim();
 
   let parsed: any = { items: [], values: [] };

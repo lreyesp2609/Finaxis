@@ -1,17 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 
 export default function AuthCallback() {
   const navigate = useNavigate();
+  const completedRef = useRef(false);
 
   useEffect(() => {
-    const handleCallback = async () => {
-      // Wait for Supabase to process the OAuth tokens from URL hash
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
+    let subscription: any = null;
+    let safetyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const handleCallbackComplete = async () => {
+      if (completedRef.current) return;
+      completedRef.current = true;
+
+      if (safetyTimeout) clearTimeout(safetyTimeout);
+      if (subscription) subscription.unsubscribe();
+
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (window.opener !== null) {
         // We are inside a popup - notify parent and close explicitly without COOP cross-origin warnings
         const channel = new BroadcastChannel('supabase-oauth');
@@ -24,7 +31,33 @@ export default function AuthCallback() {
       }
     };
 
-    handleCallback();
+    // Check if we already have a session immediately
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        handleCallbackComplete();
+      }
+    });
+
+    // Listen for the SIGNED_IN event
+    const { data: { subscription: sub } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          handleCallbackComplete();
+        }
+      }
+    );
+    subscription = sub;
+
+    // Safety timeout of 5 seconds (5000ms)
+    safetyTimeout = setTimeout(() => {
+      console.warn('[AuthCallback] Safety timeout reached. Attempting fallback session check.');
+      handleCallbackComplete();
+    }, 5000);
+
+    return () => {
+      if (safetyTimeout) clearTimeout(safetyTimeout);
+      if (subscription) subscription.unsubscribe();
+    };
   }, [navigate]);
 
   return (

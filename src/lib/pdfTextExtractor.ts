@@ -1,4 +1,3 @@
-// @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Tesseract from 'tesseract.js';
 
@@ -6,7 +5,6 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dis
 
 export async function extractTextFromPDF(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   const lines: string[] = [];
@@ -45,7 +43,6 @@ export async function extractTextFromPDF(file: File): Promise<string> {
 
 export async function extractTextWithOCR(file: File): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  // @ts-ignore
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
   const allText: string[] = [];
@@ -67,13 +64,12 @@ export async function extractTextWithOCR(file: File): Promise<string> {
     await page.render({ canvas, viewport }).promise;
 
     const { data } = await Tesseract.recognize(canvas, 'spa', {
-      // @ts-ignore
       logger: (m: any) => {
         if (m.status === 'recognizing text' && import.meta.env.DEV) {
           console.log(`OCR page ${pageNum}: ${Math.round(m.progress * 100)}%`);
         }
       },
-    });
+    } as any);
 
     allText.push(data.text);
     canvas.remove();

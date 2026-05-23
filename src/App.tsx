@@ -15,6 +15,7 @@ import DashboardLayout from './components/DashboardLayout';
 import SalaParticipante from './pages/Salaparticipante';
 import VerParticipante from './pages/Verparticipante';
 import ModuloEstadoFinanciero from './pages/ModuloEstadoFinanciero';
+import { Toaster } from 'react-hot-toast';
 
 const NotFound = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px', color: '#64748b' }}>
@@ -28,6 +29,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <Toaster position="top-right" reverseOrder={false} />
         <Routes>
           {/* OAuth Callback handles exchanges and bounces to dashboard/login */}
           <Route path="/auth/callback" element={<AuthCallback />} />
@@ -59,3 +61,4 @@ export default function App() {
     </BrowserRouter>
   );
 }
+

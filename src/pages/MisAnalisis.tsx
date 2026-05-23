@@ -230,7 +230,14 @@ function ModalCrearEmpresa({ userId, tipos, onClose, onCreated }: {
     if (!nombre.trim()) { setError('El nombre es obligatorio.'); return; }
     setError(null); setSaving(true);
     const { data: nuevoId, error: err } = await supabase.rpc('crear_empresa', { p_nombre: nombre.trim(), p_descripcion: descripcion.trim() || null, p_idtipo: idtipo, p_user_id: userId });
-    if (err || !nuevoId) { setError('Error: ' + (err?.message ?? '')); setSaving(false); return; }
+    if (err || !nuevoId) {
+      if (import.meta.env.DEV) {
+        console.error('[crear_empresa] Error:', err);
+      }
+      setError('No se pudo crear la empresa. Por favor, inténtalo de nuevo.');
+      setSaving(false);
+      return;
+    }
     const tipoNombre = tipos.find(t => t.id === idtipo)?.nombre ?? 'comercial';
     onCreated({ id: nuevoId, nombre: nombre.trim(), descripcion: descripcion.trim() || null, idtipo_empresa: idtipo, tipo_nombre: tipoNombre, created_at: new Date().toISOString(), total_estados: 0 });
   };
@@ -347,7 +354,12 @@ function ModalCrearEstado({ userId, empresa, onClose, onCreated }: {
       p_nombre: nombre.trim(), p_descripcion: descripcion.trim() || null,
       p_idcatalogo: idcatalogo, p_user_id: userId, p_idempresa: empresa.id,
     });
-    if (e || !nuevoId) throw new Error(e?.message ?? '');
+    if (e || !nuevoId) {
+      if (import.meta.env.DEV) {
+        console.error('[crear_estado_completo] RPC Error:', e);
+      }
+      throw new Error('No se pudo crear la estructura base del estado financiero.');
+    }
     return nuevoId as number;
   };
 
@@ -358,7 +370,13 @@ function ModalCrearEstado({ userId, empresa, onClose, onCreated }: {
       const id = await createEstadoBase(catalogoSel.id);
       const { data } = await supabase.from('estadodecuenta').select('id, created_at, idcatalogo, user, nombre, descripcion, estado, idarchivofire, idempresa').eq('id', id).single();
       setSaving(false); if (data) onCreated({ ...data, catalogo_nombre: catalogoSel.nombre });
-    } catch (err: any) { setError('Error: ' + (err?.message ?? '')); setSaving(false); }
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[handleCreateNormal] Error:', err);
+      }
+      setError(err.message || 'Ocurrió un error inesperado al crear el estado financiero.');
+      setSaving(false);
+    }
   };
 
   const handleCreateWithPDF = async () => {
@@ -372,7 +390,13 @@ function ModalCrearEstado({ userId, empresa, onClose, onCreated }: {
       if (vals.length) await supabase.rpc('guardar_valores_estado', { p_idestadocuenta: id, p_valores: vals });
       const { data } = await supabase.from('estadodecuenta').select('id, created_at, idcatalogo, user, nombre, descripcion, estado, idarchivofire, idempresa').eq('id', id).single();
       setSaving(false); if (data) onCreated({ ...data, catalogo_nombre: catalogoSel.nombre });
-    } catch (err: any) { setError('Error: ' + (err?.message ?? '')); setSaving(false); }
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[handleCreateWithPDF] Error:', err);
+      }
+      setError('Ocurrió un error inesperado al procesar y crear el estado financiero con PDF.');
+      setSaving(false);
+    }
   };
 
   const handleCreateFull = async () => {
@@ -412,7 +436,13 @@ function ModalCrearEstado({ userId, empresa, onClose, onCreated }: {
 
       const { data } = await supabase.from('estadodecuenta').select('id, created_at, idcatalogo, user, nombre, descripcion, estado, idarchivofire, idempresa').eq('id', id).single();
       setSaving(false); if (data) onCreated({ ...data, catalogo_nombre: catalogName.trim() });
-    } catch (err: any) { setError('Error: ' + (err?.message ?? '')); setSaving(false); }
+    } catch (err: any) {
+      if (import.meta.env.DEV) {
+        console.error('[handleCreateFull] Error:', err);
+      }
+      setError('Ocurrió un error inesperado al generar el catálogo y crear el estado financiero.');
+      setSaving(false);
+    }
   };
 
   const isLocked = step === 'extracting' || saving;

@@ -5,6 +5,7 @@ import { evaluateSafeFormula } from '../lib/formulaEvaluator';
 import styles from './ModuloEstadoFinanciero.module.css';
 import { exportarPDF } from './exportarPDF';
 import ImportarRiesgosExcel from './ImportarRiesgosExcel';
+import { toast } from 'react-hot-toast';
 
 /* ─── Types ── */
 interface Empresa { id: number; nombre: string; descripcion: string | null; idtipo_empresa: number; tipo_nombre: string; created_at: string; total_estados: number; }
@@ -1393,8 +1394,14 @@ export default function ModuloEstadoFinanciero() {
   const handleExportar = async () => {
     if (!empresa || !estadoSel) return;
     setExportando(true); setExportProgress('Iniciando exportación...');
-    try { await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg), verticalConfig); }
-    catch (err) { console.error('Error exportando PDF:', err); alert('Error al generar el PDF. Verifica la consola.'); }
+    try {
+      await exportarPDF(empresa, estadoSel, user!.id, (msg) => setExportProgress(msg), verticalConfig);
+      toast.success('PDF exportado con éxito.');
+    }
+    catch (err) {
+      console.error('Error exportando PDF:', err);
+      toast.error('Error al generar el PDF. Verifica la consola para más detalles.');
+    }
     finally { setExportando(false); setExportProgress(null); }
   };
 

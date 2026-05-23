@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabaseClient';
 import styles from './EditarCatalogo.module.css';
 import FormulaCard, { type Formula } from './FormulaCard';
 import FormulaBuilder from './Formulabuilder';
+import { toast } from 'react-hot-toast';
 
 /* ── Types ── */
 interface Catalogo {
@@ -515,7 +516,10 @@ export default function EditarCatalogo() {
     setSaving(false);
 
     if (error) {
-      alert('Error al guardar: ' + error.message);
+      if (import.meta.env.DEV) {
+        console.error('[saveAll] Error saving catalog:', error);
+      }
+      toast.error('Error al guardar: no se pudieron almacenar los cambios del catálogo.');
       return;
     }
 
@@ -531,6 +535,7 @@ export default function EditarCatalogo() {
     setEditMode(false);
     setAddingRootItem(false);
     setAddingRootGroup(false);
+    toast.success('Catálogo guardado con éxito.');
   };
 
   /* ── Actualizar ítem ── */
@@ -647,6 +652,9 @@ export default function EditarCatalogo() {
       .delete()
       .eq('id', formulaId);
     if (error) {
+      if (import.meta.env.DEV) {
+        console.error('[handleDeleteFormula] Error deleting formula:', error);
+      }
       // Revert on failure: recargar desde BD
       const { data } = await supabase
         .from('formula')
@@ -654,7 +662,9 @@ export default function EditarCatalogo() {
         .eq('idcatalogo', catalogo!.id)
         .order('created_at', { ascending: false });
       setFormulas(data ?? []);
-      alert('Error al eliminar la fórmula: ' + error.message);
+      toast.error('No se pudo eliminar la fórmula. Inténtalo de nuevo.');
+    } else {
+      toast.success('Fórmula eliminada correctamente.');
     }
   };
 
@@ -677,10 +687,14 @@ export default function EditarCatalogo() {
 
       setSavingFormula(false);
       if (error) {
-        alert('Error al guardar la fórmula: ' + error.message);
+        if (import.meta.env.DEV) {
+          console.error('[handleSaveFormula] Error updating formula:', error);
+        }
+        toast.error('No se pudo actualizar la fórmula.');
         return;
       }
       setFormulas(prev => prev.map(f => f.id === formulaToEdit.id ? updated : f));
+      toast.success('Fórmula actualizada correctamente.');
     } else {
       // ── Crear ──
       const { data: created, error } = await supabase
@@ -697,10 +711,14 @@ export default function EditarCatalogo() {
 
       setSavingFormula(false);
       if (error) {
-        alert('Error al crear la fórmula: ' + error.message);
+        if (import.meta.env.DEV) {
+          console.error('[handleSaveFormula] Error creating formula:', error);
+        }
+        toast.error('No se pudo registrar la nueva fórmula.');
         return;
       }
       setFormulas(prev => [created, ...prev]);
+      toast.success('Fórmula creada correctamente.');
     }
 
     setShowFormulaBuilder(false);
