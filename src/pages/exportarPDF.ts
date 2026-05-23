@@ -3,7 +3,7 @@
  */
 
 import { supabase } from '../lib/supabaseClient';
-
+import { evaluateSafeFormula } from '../lib/formulaEvaluator';
 /* --- Types ---------------------------------------------------------------- */
 interface Empresa { id: number; nombre: string; tipo_nombre: string; }
 interface EstadoCuenta { id: number; nombre: string; idcatalogo: number; }
@@ -124,9 +124,8 @@ function evalFormula(tokens: FToken[], fm: Record<number, number>): number | nul
         } else expr += t.value;
     }
     try {
-        // eslint-disable-next-line no-new-func
-        const r = new Function(`return (${expr})`)();
-        return typeof r === 'number' && isFinite(r) ? Math.round(r * 10000) / 10000 : null;
+        const r = evaluateSafeFormula(expr);
+        return Math.round(r * 10000) / 10000;
     } catch { return null; }
 }
 

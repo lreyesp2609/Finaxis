@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
+import { evaluateSafeFormula } from '../lib/formulaEvaluator';
 import styles from './ModuloEstadoFinanciero.module.css';
 import { exportarPDF } from './exportarPDF';
 import ImportarRiesgosExcel from './ImportarRiesgosExcel';
@@ -81,7 +82,7 @@ function evaluateFormula(tokens: FormulaToken[], valMap: Record<number, number>)
     else if (t.type === 'operator') { const op = t.value === '−' ? '-' : t.value === '×' ? '*' : t.value === '÷' ? '/' : t.value; expr += ` ${op} `; }
     else { expr += t.value; }
   }
-  try { const r = Function(`"use strict"; return (${expr})`)(); return typeof r === 'number' && isFinite(r) ? r : null; }
+  try { return evaluateSafeFormula(expr); }
   catch { return null; }
 }
 

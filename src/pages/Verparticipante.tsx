@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
-
+import { evaluateSafeFormula } from '../lib/formulaEvaluator';
 interface EstadoCatalogo {
   idcatalogo: number;
   catalogo_nombre: string;
@@ -60,7 +60,7 @@ function evaluateFormula(tokens: FormulaToken[], valoresMap: ValoresMap, anioId:
     else if (token.type === 'operator') { const op = token.value === '−' ? '-' : token.value === '×' ? '*' : token.value === '÷' ? '/' : token.value; expr += ` ${op} `; }
     else { expr += token.value; }
   }
-  try { const result = Function(`"use strict"; return (${expr})`)(); if (typeof result !== 'number' || !isFinite(result)) return null; return result; } catch { return null; }
+  try { return evaluateSafeFormula(expr); } catch { return null; }
 }
 function TokenPreview({ token }: { token: FormulaToken }) {
   if (token.type === 'item') return <span className="vp-token vp-token-item">{token.value}</span>;

@@ -10,6 +10,7 @@
 // @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Tesseract from 'tesseract.js';
+import { supabase } from './supabaseClient';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/legacy/build/pdf.worker.min.mjs`;
 
@@ -161,57 +162,8 @@ async function parseStructureAndValuesWithGroq(
   items: Array<{ code: string | null; nombre: string; contenedor: boolean; parentCode: string | null }>;
   values: Array<{ itemCode: string; year: string; valor: number }>;
 }> {
-  const apiKey = (import.meta as any).env?.VITE_GROQ_API_KEY;
-  if (!apiKey) throw new Error('VITE_GROQ_API_KEY no configurada');
-
-  const yearsStr = years.join(', ');
-
-  const systemPrompt = `Eres un extractor de estados financieros ecuatorianos.
-Responde SOLO con un objeto JSON válido. Sin markdown, sin explicaciones, sin texto extra.
-
-TAREA: Dado un estado financiero, extrae:
-1. La ESTRUCTURA jerárquica de cuentas
-2. Los VALORES numéricos por cuenta y año
-
-AÑOS A EXTRAER: ${yearsStr}
-
-══ REGLAS ESTRUCTURA (array "items") ══
-Cada ítem: { "code": string|null, "nombre": string, "contenedor": bool, "parentCode": string|null }
-- "nombre": texto en MAYÚSCULAS exactamente como aparece
-- "contenedor": true si es un grupo, subtotal, margen, o totalizador (sin valor propio)
-- "contenedor": false si es una cuenta con valor numérico
-- "code": código numérico si existe, o código sintético para grupos (G1, G2, M1, M2...)
-- "parentCode": code del ítem padre inmediato, o null si es raíz
-- Mantén la jerarquía: si el documento muestra sangría o niveles, refléjalos con parentCode
-
-══ REGLAS VALORES (array "values") ══
-Solo para ítems con contenedor:false
-Cada valor: { "itemCode": string, "year": string, "valor": number }
-- Extrae para TODOS los años detectados
-- Valores negativos si aparecen entre paréntesis o con signo negativo
-- Si no hay valor, usa 0 (no incluir en la respuesta)
-- Formatos: 1.234.567,89 | 1234567.89 | (1234) | -1234 | — o - = cero
-
-══ EXCLUIR ══
-- Encabezados de tabla (CÓDIGO, DESCRIPCIÓN, fechas como columnas)
-- Totales finales (GANANCIA O PÉRDIDA DEL EJERCICIO, UTILIDAD NETA, etc.)
-- Pie de página, firmas, fechas, nombres de funcionarios
-
-FORMATO EXACTO DE RESPUESTA:
-{
-  "items": [
-    { "code": "G1", "nombre": "NOMBRE GRUPO", "contenedor": true, "parentCode": null },
-    { "code": "51", "nombre": "NOMBRE CUENTA", "contenedor": false, "parentCode": "G1" }
-  ],
-  "values": [
-    { "itemCode": "51", "year": "${years[0]}", "valor": 12345.67 }
-  ]
-}`;
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify({
+  const { data, error } = await supabase.functions.invoke('groq-proxy', {
+    body: {
       model: 'llama-3.3-70b-versatile',
       temperature: 0,
       max_tokens: 6000,
@@ -222,12 +174,14 @@ FORMATO EXACTO DE RESPUESTA:
           content: `Extrae la estructura completa y todos los valores para los años: ${yearsStr}\n\nTEXTO DEL PDF:\n${rawText.substring(0, 8000)}`,
         },
       ],
-    }),
+    }
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Groq API error: ${err}`);
+  if (error) {
+    throw new Error(`Groq Proxy error: ${error.message || JSON.stringify(error)}`);
+  }
+  if (data?.error) {
+    throw new Error(`Groq API error: ${data.error.message || JSON.stringify(data.error)}`);
   }
 
   const data = await response.json();

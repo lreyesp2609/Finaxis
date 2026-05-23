@@ -154,7 +154,7 @@ export default function Register() {
       if (error) {
         setError(translateAuthError(error.message));
       } else {
-        window.location.replace('/perfiles');
+        window.location.replace('/dashboard');
       }
     } catch {
       setError('Sin conexión. Verifica tu internet e intenta de nuevo.');

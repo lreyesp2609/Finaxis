@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
-
+import { evaluateSafeFormula } from '../lib/formulaEvaluator';
 /* ─────────────────────────────────────────
    TYPES
 ───────────────────────────────────────── */
@@ -91,10 +91,7 @@ function evaluateFormula(tokens: FormulaToken[], valoresMap: ValoresMap, anioId:
     }
   }
   try {
-    // eslint-disable-next-line no-new-func
-    const result = Function(`"use strict"; return (${expr})`)();
-    if (typeof result !== 'number' || !isFinite(result)) return null;
-    return result;
+    return evaluateSafeFormula(expr);
   } catch { return null; }
 }
 

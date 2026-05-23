@@ -16,6 +16,14 @@ import SalaParticipante from './pages/Salaparticipante';
 import VerParticipante from './pages/Verparticipante';
 import ModuloEstadoFinanciero from './pages/ModuloEstadoFinanciero';
 
+const NotFound = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '16px', color: '#64748b' }}>
+    <h1 style={{ fontSize: '48px', margin: 0, color: '#1e293b' }}>404</h1>
+    <p style={{ margin: 0 }}>Página no encontrada</p>
+    <a href="/dashboard" style={{ marginTop: '16px', padding: '8px 16px', background: '#185FA5', color: 'white', textDecoration: 'none', borderRadius: '6px' }}>Volver al inicio</a>
+  </div>
+);
+
 export default function App() {
   return (
     <BrowserRouter>
@@ -45,7 +53,7 @@ export default function App() {
           </Route>
 
           {/* Catch-all */}
-          <Route path="*" element={<Navigate to="/login" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

@@ -1,6 +1,7 @@
 // @ts-ignore
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
 import Tesseract from 'tesseract.js';
+import { supabase } from './supabaseClient';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@5.5.207/legacy/build/pdf.worker.min.mjs`;
 
@@ -165,52 +166,8 @@ async function matchWithAI(
   catalogItems: CatalogItem[],
   years: string[]
 ): Promise<ExtractedValue[]> {
-  const apiKey = (import.meta as any).env?.VITE_GROQ_API_KEY;
-  if (!apiKey) throw new Error('VITE_GROQ_API_KEY no configurada');
-
-  const leafItems = catalogItems.filter(i => !i.contenedor);
-
-  const catalogList = leafItems
-    .map(i => `ID:${i.id} | CODIGO:${i.codigo ?? 'null'} | NOMBRE:${i.nombre}`)
-    .join('\n');
-
-  const yearsLine = years.map(yr => `"${yr}": <número>`).join(', ');
-
-  const prompt = `Eres un extractor de estados financieros.
-Dado el texto de un PDF financiero y una lista de ítems del catálogo,
-extrae los valores numéricos para cada ítem del catálogo.
-
-AÑOS DETECTADOS EN EL PDF: ${years.join(', ')}
-
-CATÁLOGO DE ÍTEMS (solo estos, no inventes):
-${catalogList}
-
-INSTRUCCIONES:
-- Para cada ítem del catálogo, busca en el texto la línea que mejor corresponda por nombre o código
-- Extrae el valor numérico para cada año detectado
-- Si un ítem no aparece en el PDF, devuelve valores 0
-- Si el PDF tiene columnas para múltiples años, extrae TODOS los años
-- Los valores pueden tener formato: 1.234.567,89 o 1234567.89 o (1234567) para negativos
-- Devuelve SOLO JSON válido, sin markdown ni explicaciones
-
-FORMATO DE RESPUESTA (array JSON):
-[
-  {
-    "itemcatId": <número id del catálogo>,
-    "values": { ${yearsLine} }
-  }
-]
-
-TEXTO DEL PDF:
-${rawText.substring(0, 7000)}`;
-
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
+  const { data, error } = await supabase.functions.invoke('groq-proxy', {
+    body: {
       model: 'llama-3.3-70b-versatile',
       temperature: 0,
       max_tokens: 4000,
@@ -221,12 +178,14 @@ ${rawText.substring(0, 7000)}`;
         },
         { role: 'user', content: prompt },
       ],
-    }),
+    }
   });
 
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Groq API error: ${err}`);
+  if (error) {
+    throw new Error(`Groq Proxy error: ${error.message || JSON.stringify(error)}`);
+  }
+  if (data?.error) {
+    throw new Error(`Groq API error: ${data.error.message || JSON.stringify(data.error)}`);
   }
 
   const data = await response.json();
